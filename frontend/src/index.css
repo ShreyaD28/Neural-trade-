@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-obs-bg: #111417;
+  --color-obs-surface: #1d2023;
+  --color-obs-container: #272a2e;
+  --color-obs-container-high: #323538;
+  --color-obs-primary: #c0c1ff;
+  --color-obs-primary-dim: #9b9dd4;
+  --color-obs-green: #44dfa3;
+  --color-obs-coral: #ffb3ac;
+  --color-obs-text: #e1e2e7;
+  --color-obs-muted: #c7c4d7;
+  --color-obs-outline: rgba(70, 69, 84, 0.15);
+  --radius-obs: 2px;
+  --radius-obs-lg: 4px;
+  --radius-obs-xl: 8px;
+  --radius-obs-full: 12px;
+  --font-manrope: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-inter: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    @apply bg-obs-bg font-inter text-obs-text antialiased;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-manrope);
+  }
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1.25rem;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes obs-ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-obs-ticker {
+  animation: obs-ticker 45s linear infinite;
+}
+
+@keyframes obs-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(68, 223, 163, 0.5);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 0 6px rgba(68, 223, 163, 0);
+  }
+}
+
+.obs-pulse-green {
+  animation: obs-pulse-dot 2s ease-in-out infinite;
+}
+
+.dot-grid-auth {
+  background-image: radial-gradient(
+    rgba(192, 193, 255, 0.08) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}

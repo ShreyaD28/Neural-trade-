@@ -1,0 +1,10 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pandas>=2.2.0
+numpy>=2.0.0
+scikit-learn>=1.5.0
+prophet>=1.1.0
+torch>=2.4.0
+yfinance>=0.2.40
+pymongo>=4.10.0
+python-dotenv>=1.0.0
