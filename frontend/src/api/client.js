@@ -1,6 +1,8 @@
 import axios from 'axios'
 
-const baseURL = import.meta.env.VITE_API_URL || '/api'
+const baseURL = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL + '/api'
+  : 'http://localhost:5050/api'
 
 const api = axios.create({
   baseURL,
@@ -16,7 +18,6 @@ api.interceptors.request.use((config) => {
 
 export default api
 
-/** ML service — used for predictions, risk analytics, signals */
 export const mlApi = axios.create({
   baseURL: import.meta.env.VITE_ML_URL || 'http://localhost:8000',
   timeout: 120_000,
