@@ -2,6 +2,8 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
+console.log("ENV TEST:", process.env.MONGODB_URI ? "LOADED" : "MISSING");
+
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
@@ -14,12 +16,15 @@ const marketRoutes = require('./routes/market');
 const signalsRoutes = require('./routes/signals');
 const { startMarketFeed } = require('./services/marketFeed');
 
-const PORT = Number(process.env.PORT) || 5050;
+const PORT = process.env.PORT || 5050;
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+  : ['http://localhost:5173'];
 const app = express();
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: allowedOrigins,
     credentials: true,
   })
 );
@@ -57,7 +62,7 @@ server.once('error', (err) => {
 });
 
 const io = new Server(server, {
-  cors: { origin: process.env.CORS_ORIGIN || '*', methods: ['GET', 'POST'] },
+  cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
 });
 
 startMarketFeed(io);
