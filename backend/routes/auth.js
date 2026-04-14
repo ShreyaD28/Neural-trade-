@@ -1,6 +1,8 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 
@@ -10,6 +12,17 @@ function signToken(userId) {
   return jwt.sign({ userId: String(userId) }, process.env.JWT_SECRET, {
     expiresIn: '7d',
   });
+}
+
+let googleClient = null;
+function getGoogleClient() {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    throw new Error('GOOGLE_CLIENT_ID is not set');
+  }
+  if (!googleClient) {
+    googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+  }
+  return googleClient;
 }
 
 router.post('/register', async (req, res) => {
@@ -62,6 +75,51 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Login failed' });
+  }
+});
+
+router.post('/google', async (req, res) => {
+  try {
+    const credential = String(req.body?.credential || '').trim();
+    if (!credential) {
+      return res.status(400).json({ error: 'Google credential is required' });
+    }
+
+    const client = getGoogleClient();
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.email) {
+      return res.status(400).json({ error: 'Google account email missing' });
+    }
+
+    const email = payload.email.toLowerCase();
+    const name = String(payload.name || '').trim();
+    let user = await User.findOne({ email });
+    if (!user) {
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      const hash = await bcrypt.hash(randomPassword, 10);
+      user = await User.create({
+        email,
+        password: hash,
+        name,
+      });
+    }
+
+    const token = signToken(user._id);
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        cashBalance: user.cashBalance,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Google login failed' });
   }
 });
 

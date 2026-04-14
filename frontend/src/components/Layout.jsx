@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import TickerTape from './TickerTape'
 import { useSocket } from '../hooks/useSocket'
@@ -20,6 +20,25 @@ export default function Layout() {
   const { prices } = useSocket(null)
   const [cash, setCash] = useState(null)
   const [cashLoading, setCashLoading] = useState(true)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [notifications, setNotifications] = useState([
+    { icon: '📈', title: 'AAPL Signal', body: 'BUY signal detected — RSI 32.4', time: '2 min ago', unread: true },
+    { icon: '✅', title: 'Trade Executed', body: 'Bought 5 AAPL @ $260.48', time: '14 min ago', unread: true },
+    { icon: '⚠️', title: 'Risk Alert', body: 'Portfolio VaR exceeded 5% threshold', time: '1 hr ago', unread: false },
+  ])
+  const unreadCount = notifications.filter((n) => n.unread).length
+
+  const [soundAlerts, setSoundAlerts] = useState(false)
+  const [emailNotifications, setEmailNotifications] = useState(true)
+  const [oneTapExecution, setOneTapExecution] = useState(false)
+  const [showCommissionFees, setShowCommissionFees] = useState(true)
+  const [autoRefreshPrices, setAutoRefreshPrices] = useState(true)
+  const [showPnlPercent, setShowPnlPercent] = useState(true)
+  const [compactTableView, setCompactTableView] = useState(false)
+
+  const notificationsRef = useRef(null)
+  const settingsRef = useRef(null)
 
   useEffect(() => {
     let mounted = true
@@ -47,10 +66,42 @@ export default function Layout() {
     }
   }, [])
 
+  useEffect(() => {
+    function handleOutsideClick(e) {
+      if (
+        showNotifications &&
+        notificationsRef.current &&
+        !notificationsRef.current.contains(e.target)
+      ) {
+        setShowNotifications(false)
+      }
+      if (
+        showSettings &&
+        settingsRef.current &&
+        !settingsRef.current.contains(e.target)
+      ) {
+        setShowSettings(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [showNotifications, showSettings])
+
   function logout() {
     localStorage.removeItem('token')
     localStorage.removeItem('neuraltrade_cash')
     navigate('/', { replace: true })
+  }
+
+  function toggleNotifications() {
+    setShowNotifications((v) => !v)
+    setShowSettings(false)
+  }
+
+  function toggleSettings() {
+    setShowSettings((v) => !v)
+    setShowNotifications(false)
   }
 
   return (
@@ -147,24 +198,129 @@ export default function Layout() {
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              className={`rounded-[var(--radius-obs)] p-2 text-obs-muted hover:bg-obs-surface hover:text-obs-text`}
-              aria-label="Notifications"
-            >
-              <span className="material-symbols-outlined text-[22px]">
-                notifications
-              </span>
-            </button>
-            <button
-              type="button"
-              className={`rounded-[var(--radius-obs)] p-2 text-obs-muted hover:bg-obs-surface hover:text-obs-text`}
-              aria-label="Settings"
-            >
-              <span className="material-symbols-outlined text-[22px]">
-                settings
-              </span>
-            </button>
+            <div className="relative" ref={notificationsRef}>
+              <button
+                type="button"
+                onClick={toggleNotifications}
+                className={`relative rounded-[var(--radius-obs)] p-2 text-obs-muted hover:bg-obs-surface hover:text-obs-text`}
+                aria-label="Notifications"
+              >
+                <span className="material-symbols-outlined text-[22px]">
+                  notifications
+                </span>
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 rounded-full bg-obs-coral px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
+              </button>
+              {showNotifications ? (
+                <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-obs-outline-variant/20 bg-obs-surface shadow-xl">
+                  <div className="flex items-center justify-between border-b border-[rgba(70,69,84,0.15)] px-4 py-3">
+                    <h3 className="font-manrope text-sm font-bold text-obs-text">Notifications</h3>
+                    <button
+                      type="button"
+                      onClick={() => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))}
+                      className="text-[10px] font-mono uppercase text-obs-muted hover:text-obs-text"
+                    >
+                      Mark all read
+                    </button>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.map((n) => (
+                      <div key={`${n.title}-${n.time}`} className="border-b border-[rgba(70,69,84,0.12)] px-4 py-3 last:border-b-0">
+                        <div className="flex items-start gap-3">
+                          <div className="text-base">{n.icon}</div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-obs-text">{n.title}</p>
+                            <p className="mt-0.5 text-xs text-obs-muted">{n.body}</p>
+                            <p className="mt-1 text-[10px] font-mono uppercase text-obs-muted">{n.time}</p>
+                          </div>
+                          {n.unread ? <span className="mt-1 h-2 w-2 rounded-full bg-obs-green" /> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-[rgba(70,69,84,0.15)] px-4 py-2">
+                    <button type="button" className="text-xs font-semibold text-obs-primary hover:opacity-90">
+                      View all notifications
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="relative" ref={settingsRef}>
+              <button
+                type="button"
+                onClick={toggleSettings}
+                className={`rounded-[var(--radius-obs)] p-2 text-obs-muted hover:bg-obs-surface hover:text-obs-text`}
+                aria-label="Settings"
+              >
+                <span className="material-symbols-outlined text-[22px]">
+                  settings
+                </span>
+              </button>
+              {showSettings ? (
+                <div className="absolute right-0 top-11 z-50 w-72 rounded-xl border border-obs-outline-variant/20 bg-obs-surface shadow-xl">
+                  <div className="border-b border-[rgba(70,69,84,0.15)] px-4 py-3">
+                    <h3 className="font-manrope text-sm font-bold text-obs-text">Settings</h3>
+                  </div>
+                  <div className="space-y-4 px-4 py-3">
+                    <div>
+                      <p className="mb-2 text-[10px] font-mono uppercase text-obs-muted">Preferences</p>
+                      <div className="space-y-2">
+                        <label className="flex items-center justify-between text-xs text-obs-text">
+                          Dark Mode
+                          <input type="checkbox" checked disabled className="h-4 w-4 accent-obs-green opacity-60" />
+                        </label>
+                        <label className="flex items-center justify-between text-xs text-obs-text">
+                          Sound Alerts
+                          <input type="checkbox" checked={soundAlerts} onChange={(e) => setSoundAlerts(e.target.checked)} className="h-4 w-4 accent-obs-green" />
+                        </label>
+                        <label className="flex items-center justify-between text-xs text-obs-text">
+                          Email Notifications
+                          <input type="checkbox" checked={emailNotifications} onChange={(e) => setEmailNotifications(e.target.checked)} className="h-4 w-4 accent-obs-green" />
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-2 text-[10px] font-mono uppercase text-obs-muted">Trading</p>
+                      <div className="space-y-2">
+                        <label className="flex items-center justify-between text-xs text-obs-text">
+                          One-Tap Execution
+                          <input type="checkbox" checked={oneTapExecution} onChange={(e) => setOneTapExecution(e.target.checked)} className="h-4 w-4 accent-obs-green" />
+                        </label>
+                        <label className="flex items-center justify-between text-xs text-obs-text">
+                          Show Commission Fees
+                          <input type="checkbox" checked={showCommissionFees} onChange={(e) => setShowCommissionFees(e.target.checked)} className="h-4 w-4 accent-obs-green" />
+                        </label>
+                        <label className="flex items-center justify-between text-xs text-obs-text">
+                          Auto-refresh Prices
+                          <input type="checkbox" checked={autoRefreshPrices} onChange={(e) => setAutoRefreshPrices(e.target.checked)} className="h-4 w-4 accent-obs-green" />
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-2 text-[10px] font-mono uppercase text-obs-muted">Display</p>
+                      <div className="space-y-2">
+                        <label className="flex items-center justify-between text-xs text-obs-text">
+                          Show P&amp;L in %
+                          <input type="checkbox" checked={showPnlPercent} onChange={(e) => setShowPnlPercent(e.target.checked)} className="h-4 w-4 accent-obs-green" />
+                        </label>
+                        <label className="flex items-center justify-between text-xs text-obs-text">
+                          Compact Table View
+                          <input type="checkbox" checked={compactTableView} onChange={(e) => setCompactTableView(e.target.checked)} className="h-4 w-4 accent-obs-green" />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="border-t border-[rgba(70,69,84,0.15)] px-4 py-2 text-[10px] font-mono text-obs-muted">
+                    v1.0.0 · NeuralTrade
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={() => navigate('/trade')}

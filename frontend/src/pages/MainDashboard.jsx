@@ -44,15 +44,18 @@ function readCash() {
 export default function MainDashboard() {
   const [symbols, setSymbols] = useState(['BTC-USD', 'ETH-USD', 'SOL-USD'])
   const [symbol, setSymbol] = useState('BTC-USD')
-  const [tf, setTf] = useState('1D')
+  const [selectedTimeframe, setSelectedTimeframe] = useState('1D')
   const [lastCandle, setLastCandle] = useState(null)
   const [prevCandle, setPrevCandle] = useState(null)
   const [pricesRemote, setPricesRemote] = useState({})
   const [prevPricesRemote, setPrevPricesRemote] = useState({})
   const [indexStats, setIndexStats] = useState(INDEX_MAP.map((m) => ({ ...m, value: null, ch: null, up: null })))
   const [positions, setPositions] = useState([])
-  const [cash] = useState(readCash)
+  const [cash, setCash] = useState(readCash)
   const [showPattern, setShowPattern] = useState(true)
+  const [walletModal, setWalletModal] = useState({ open: false, mode: 'deposit' })
+  const [walletAmount, setWalletAmount] = useState('')
+  const [walletBusy, setWalletBusy] = useState(false)
 
   const onCandle = useCallback(
     (c) => {
@@ -77,6 +80,11 @@ export default function MainDashboard() {
   useEffect(() => {
     queueMicrotask(() => fetchPortfolio())
   }, [fetchPortfolio])
+
+  useEffect(() => {
+    // Placeholder for timeframe-specific data fetch logic.
+    console.log(`[MainDashboard] timeframe changed -> ${selectedTimeframe}`)
+  }, [selectedTimeframe])
 
   // Load symbol list from backend
   useEffect(() => {
@@ -160,6 +168,52 @@ export default function MainDashboard() {
   )
   const totalEquity = cash + positionsValue
 
+  async function submitWalletTransaction(mode, amount) {
+    const contractAddress = import.meta.env.VITE_TREASURY_CONTRACT_ADDRESS || '0xYourTreasuryContract'
+    const contractAbi = [
+      // Minimal placeholder ABI. Replace with your actual ABI.
+      'function deposit() payable',
+      'function withdraw(uint256 amountWei)',
+    ]
+    if (!window.ethereum) {
+      throw new Error('No wallet detected')
+    }
+    const { ethers } = await import('ethers')
+    const provider = new ethers.BrowserProvider(window.ethereum)
+    const signer = await provider.getSigner()
+    const contract = new ethers.Contract(contractAddress, contractAbi, signer)
+    if (mode === 'deposit') {
+      const tx = await contract.deposit({ value: ethers.parseEther(String(amount)) })
+      await tx.wait()
+      return
+    }
+    const tx = await contract.withdraw(ethers.parseEther(String(amount)))
+    await tx.wait()
+  }
+
+  async function handleWalletSubmit(e) {
+    e.preventDefault()
+    const amount = Number(walletAmount)
+    if (!Number.isFinite(amount) || amount <= 0) return
+    if (walletModal.mode === 'withdraw' && amount > cash) return
+    setWalletBusy(true)
+    try {
+      // Uncomment to enable on-chain tx once contract + env are configured:
+      // await submitWalletTransaction(walletModal.mode, amount)
+      setCash((prev) => {
+        const next = walletModal.mode === 'deposit' ? prev + amount : prev - amount
+        localStorage.setItem(CASH_KEY, String(next))
+        return next
+      })
+      setWalletAmount('')
+      setWalletModal((m) => ({ ...m, open: false }))
+    } catch (err) {
+      console.error('Wallet transaction failed:', err)
+    } finally {
+      setWalletBusy(false)
+    }
+  }
+
   const watchlistRows = WATCHLIST.map((sym) => {
     const live = socketPrices[sym]
     const remote = pricesRemote[sym]
@@ -208,9 +262,9 @@ export default function MainDashboard() {
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setTf(t)}
+                    onClick={() => setSelectedTimeframe(t)}
                     className={`rounded-[var(--radius-obs)] px-3 py-1 font-mono text-xs font-semibold ${
-                      tf === t
+                      selectedTimeframe === t
                         ? 'bg-obs-container-high text-obs-primary'
                         : 'text-obs-muted hover:bg-obs-surface hover:text-obs-text'
                     }`}
@@ -262,7 +316,7 @@ export default function MainDashboard() {
             </select>
             <CandlestickChart
               symbol={symbol}
-              tf={tf}
+              tf={selectedTimeframe}
               height={440}
               liveCandle={lastCandle}
             />
@@ -379,12 +433,14 @@ export default function MainDashboard() {
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
+                onClick={() => setWalletModal({ open: true, mode: 'deposit' })}
                 className="flex-1 rounded-[var(--radius-obs-lg)] bg-obs-green py-2 font-manrope text-xs font-bold text-[#111417]"
               >
                 Deposit
               </button>
               <button
                 type="button"
+                onClick={() => setWalletModal({ open: true, mode: 'withdraw' })}
                 className={`flex-1 rounded-[var(--radius-obs-lg)] border ${outline} py-2 font-manrope text-xs font-semibold text-obs-text`}
               >
                 Withdraw
@@ -426,6 +482,45 @@ export default function MainDashboard() {
           </div>
         </aside>
       </div>
+      {walletModal.open ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+          <div className={`w-full max-w-md rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface p-5`}>
+            <h3 className="font-manrope text-lg font-bold text-obs-text">
+              {walletModal.mode === 'deposit' ? 'Deposit funds' : 'Withdraw funds'}
+            </h3>
+            <p className="mt-1 text-xs text-obs-muted">
+              Simulated balance update enabled. Smart contract boilerplate is ready in code.
+            </p>
+            <form className="mt-4 space-y-3" onSubmit={handleWalletSubmit}>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={walletAmount}
+                onChange={(e) => setWalletAmount(e.target.value)}
+                placeholder="Amount"
+                className={`w-full rounded-[var(--radius-obs-lg)] border ${outline} bg-obs-bg px-3 py-2 font-mono text-sm text-obs-text`}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWalletModal({ open: false, mode: 'deposit' })}
+                  className={`rounded-[var(--radius-obs-lg)] border ${outline} px-3 py-2 text-xs text-obs-muted`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={walletBusy}
+                  className="rounded-[var(--radius-obs-lg)] bg-obs-primary px-3 py-2 text-xs font-bold text-[#111417] disabled:opacity-50"
+                >
+                  {walletBusy ? 'Processing...' : walletModal.mode === 'deposit' ? 'Confirm Deposit' : 'Confirm Withdraw'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

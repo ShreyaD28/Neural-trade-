@@ -4,12 +4,15 @@ import {
   createChart,
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
-import api from '../api/client'
+import api, { mlApi } from '../api/client'
 
 const DEFAULT_HEIGHT = 400
 
 function candleToBar(c) {
-  const t = Math.floor(new Date(c.timestamp).getTime() / 1000)
+  const rawTime = c.timestamp != null ? c.timestamp : c.time
+  const t = typeof rawTime === 'number'
+    ? rawTime
+    : Math.floor(new Date(rawTime).getTime() / 1000)
   return {
     time: t,
     open: Number(c.open),
@@ -19,12 +22,41 @@ function candleToBar(c) {
   }
 }
 
+function normalizeBars(raw) {
+  const byTime = new Map()
+  for (const item of raw ?? []) {
+    const bar = candleToBar(item)
+    const valid =
+      Number.isFinite(bar.time) &&
+      Number.isFinite(bar.open) &&
+      Number.isFinite(bar.high) &&
+      Number.isFinite(bar.low) &&
+      Number.isFinite(bar.close)
+    if (!valid) continue
+    byTime.set(bar.time, bar)
+  }
+  return [...byTime.values()].sort((a, b) => a.time - b.time)
+}
+
+function mapTimeframe(tf) {
+  const byTf = {
+    '1H': { interval: '1m', limit: 60 },
+    '4H': { interval: '1m', limit: 240 },
+    '1D': { interval: '1m', limit: 390 },
+    '1W': { interval: '1m', limit: 1200 },
+  }
+  return byTf[tf] ?? { interval: '1m', limit: 390 }
+}
+
 /**
  * @param {{ symbol: string, height?: number, liveCandle?: object | null }} props
  */
 export default function CandlestickChart({
   symbol,
   tf = '1m',
+  source = 'backend',
+  interval = '1h',
+  period = '1mo',
   height = DEFAULT_HEIGHT,
   liveCandle = null,
 }) {
@@ -78,17 +110,19 @@ export default function CandlestickChart({
 
     let cancelled = false
 
+    const { interval: backendInterval, limit } = mapTimeframe(tf)
     ;(async () => {
       try {
-        const { data } = await api.get(`/market/candles/${encodeURIComponent(symbol)}`, {
-          params: { limit: 400, interval: tf },
-        })
+        const { data } = source === 'ml'
+          ? await mlApi.get(`/candles/${encodeURIComponent(symbol)}`, {
+              params: { interval, period },
+            })
+          : await api.get(`/market/candles/${encodeURIComponent(symbol)}`, {
+              params: { limit, interval: backendInterval },
+            })
         if (cancelled) return
-        const raw = data.candles ?? []
-        const bars = raw
-          .map(candleToBar)
-          .filter((b) => Number.isFinite(b.time) && Number.isFinite(b.close))
-          .sort((a, b) => a.time - b.time)
+        const raw = source === 'ml' ? (Array.isArray(data) ? data : []) : (data.candles ?? [])
+        const bars = normalizeBars(raw)
         series.setData(bars)
         chart.timeScale().fitContent()
 
@@ -128,7 +162,7 @@ export default function CandlestickChart({
       chartRef.current = null
       seriesRef.current = null
     }
-  }, [symbol, height])
+  }, [symbol, height, tf, source, interval, period])
 
   useEffect(() => {
     if (!liveCandle || liveCandle.symbol !== symbol || !seriesRef.current) {

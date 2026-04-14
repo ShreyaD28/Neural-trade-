@@ -11,6 +11,12 @@ const ASSETS = [
   { sym: 'ETH-USD', name: 'Ethereum' },
   { sym: 'AAPL', name: 'Apple Inc.' },
 ]
+const TIMEFRAME_MAP = {
+  '1H': { interval: '5m', period: '1d' },
+  '4H': { interval: '15m', period: '5d' },
+  '1D': { interval: '1h', period: '1mo' },
+  '1W': { interval: '1d', period: '6mo' },
+}
 
 const CASH_KEY = 'neuraltrade_cash'
 
@@ -38,13 +44,13 @@ export default function TradingPanel() {
   const [orderType, setOrderType] = useState('MARKET')
   const [qty, setQty] = useState('')
   const [oneTap, setOneTap] = useState(false)
-  const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [lastCandle, setLastCandle] = useState(null)
   const [recent, setRecent] = useState([])
   const [cash, setCash] = useState(readCash)
   const [ownedQty, setOwnedQty] = useState(0)
-  const [tf, setTf] = useState('1H')
+  const [timeframe, setTimeframe] = useState('1D')
+  const [toast, setToast] = useState({ open: false, type: 'success', message: '' })
 
   const chartSymbol = useMemo(() => toChartSymbol(asset), [asset])
 
@@ -66,6 +72,7 @@ export default function TradingPanel() {
   const totalEst = estCost != null ? estCost + commission : null
   const canBuy = validQ && totalEst != null && totalEst <= cash
   const canSell = validQ && q <= ownedQty
+  const timeframeConfig = TIMEFRAME_MAP[timeframe] ?? TIMEFRAME_MAP['1D']
 
   const loadRecent = useCallback(async () => {
     try {
@@ -88,6 +95,14 @@ export default function TradingPanel() {
     queueMicrotask(() => loadRecent())
   }, [loadRecent])
 
+  useEffect(() => {
+    if (!toast.open) return undefined
+    const id = setTimeout(() => {
+      setToast((t) => ({ ...t, open: false }))
+    }, 3000)
+    return () => clearTimeout(id)
+  }, [toast.open])
+
   function pctFill(p) {
     const v = (cash * p) / 100
     if (!px || !Number.isFinite(px)) return
@@ -103,35 +118,74 @@ export default function TradingPanel() {
     setQty(String(Math.max(0, ownedQty)))
   }
 
-  async function execute() {
-    setMsg('')
-    if (!validQ || px == null) {
-      setMsg('Enter quantity and wait for live price.')
+  async function resolveCashBalance() {
+    const local = Number(localStorage.getItem(CASH_KEY))
+    if (Number.isFinite(local) && local >= 0) {
+      return local
+    }
+    const token = localStorage.getItem('token')
+    const { data } = await api.get('/portfolio/summary', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    const fetched = Number(data?.cashBalance ?? 0)
+    localStorage.setItem(CASH_KEY, String(fetched))
+    setCash(fetched)
+    return fetched
+  }
+
+  async function handleTrade() {
+    if (!asset) {
+      setToast({ open: true, type: 'error', message: 'Please select a symbol' })
       return
     }
-    if (side === 'buy' && !canBuy) {
-      setMsg('Insufficient margin / cash.')
+    if (!validQ || q <= 0 || px == null) {
+      setToast({ open: true, type: 'error', message: 'Quantity must be greater than 0' })
       return
     }
+
+    const token = localStorage.getItem('token')
+    if (!token) {
+      setToast({ open: true, type: 'error', message: 'Authentication required' })
+      return
+    }
+
     setBusy(true)
     try {
+      const availableCash = await resolveCashBalance()
+      const tradeTotal = q * px
+
+      if (side === 'buy' && tradeTotal > availableCash) {
+        setToast({ open: true, type: 'error', message: 'Insufficient funds' })
+        return
+      }
+
       const { data } = await api.post('/portfolio/trades', {
         symbol: asset,
         side,
-        quantity: q,
+        quantity: Number(qty),
         price: px,
+        total: tradeTotal,
         status: 'filled',
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
       })
+
       const newCash = Number(data?.newCashBalance ?? cash)
       setCash(newCash)
       localStorage.setItem(CASH_KEY, String(newCash))
-      setMsg(
-        `✓ ${side === 'buy' ? 'Bought' : 'Sold'} ${q} ${asset} @ $${px.toFixed(2)} — Total: $${(q * px).toFixed(2)}`
-      )
+      setToast({
+        open: true,
+        type: 'success',
+        message: `✓ ${side === 'buy' ? 'Bought' : 'Sold'} ${q} ${asset} @ $${px.toFixed(2)}`,
+      })
       setQty('')
-      loadRecent()
+      await loadRecent()
     } catch (e) {
-      setMsg(`✗ ${e.response?.data?.error ?? e.message ?? 'Failed'}`)
+      setToast({
+        open: true,
+        type: 'error',
+        message: e.response?.data?.error ?? e.message ?? 'Trade failed',
+      })
     } finally {
       setBusy(false)
     }
@@ -183,15 +237,15 @@ export default function TradingPanel() {
                 <span className="text-obs-muted">/ USD</span>
               </div>
               <div className="flex gap-1">
-                {['1H', '4H', '1D'].map((t) => (
+                {['1H', '4H', '1D', '1W'].map((t) => (
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setTf(t)}
+                    onClick={() => setTimeframe(t)}
                     className={`rounded-[var(--radius-obs)] px-3 py-1 font-mono text-xs font-semibold ${
-                      tf === t
-                        ? 'bg-obs-container-high text-obs-primary'
-                        : 'text-obs-muted hover:text-obs-text'
+                      timeframe === t
+                        ? 'bg-obs-green text-black'
+                        : 'bg-obs-container text-obs-muted'
                     }`}
                   >
                     {t}
@@ -201,9 +255,12 @@ export default function TradingPanel() {
             </div>
 
             <CandlestickChart
-              symbol={chartSymbol}
+              symbol={asset}
               height={400}
               liveCandle={lastCandle}
+              source="ml"
+              interval={timeframeConfig.interval}
+              period={timeframeConfig.period}
             />
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -399,14 +456,8 @@ export default function TradingPanel() {
 
             <button
               type="button"
-              disabled={
-                busy ||
-                (side === 'buy' && !canBuy) ||
-                (side === 'sell' && !canSell) ||
-                !validQ ||
-                px == null
-              }
-              onClick={execute}
+              disabled={busy || (side === 'buy' && !canBuy)}
+              onClick={handleTrade}
               className="mb-4 w-full rounded-[var(--radius-obs-lg)] bg-gradient-to-r from-[#8b8fd1] to-obs-primary py-3.5 font-manrope text-sm font-bold text-[#111417] shadow-lg shadow-obs-primary/20 disabled:opacity-40"
             >
               EXECUTE TRADE
@@ -425,12 +476,22 @@ export default function TradingPanel() {
             <p className="text-center font-mono text-[9px] uppercase tracking-widest text-obs-muted">
               End-to-end encrypted execution
             </p>
-            {msg ? (
-              <p className={`mt-3 text-center text-sm ${msg.startsWith('✗') ? 'text-obs-coral' : 'text-obs-green'}`}>{msg}</p>
-            ) : null}
           </div>
         </div>
       </div>
+      {toast.open ? (
+        <div className="fixed bottom-5 right-5 z-50">
+          <div
+            className={`rounded-[var(--radius-obs-lg)] border px-4 py-3 text-sm shadow-lg ${
+              toast.type === 'success'
+                ? 'border-obs-green/40 bg-obs-green/15 text-obs-green'
+                : 'border-obs-coral/40 bg-obs-coral/15 text-obs-coral'
+            }`}
+          >
+            {toast.message}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

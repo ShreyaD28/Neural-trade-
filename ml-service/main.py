@@ -11,7 +11,7 @@ from typing import Optional
 
 import yfinance as yf
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -109,10 +109,14 @@ def get_prices():
 
 
 @app.get("/candles/{symbol}")
-def get_candles(symbol: str):
-    """Return 1m intraday candles from Yahoo Finance for a symbol."""
+def get_candles(
+    symbol: str,
+    interval: str = Query(default="1h"),
+    period: str = Query(default="1mo"),
+):
+    """Return candles from Yahoo Finance for a symbol and timeframe."""
     try:
-        df = yf.download(symbol, period="1d", interval="1m", progress=False)
+        df = yf.download(symbol, period=period, interval=interval, progress=False)
         if df.empty:
             return []
 
