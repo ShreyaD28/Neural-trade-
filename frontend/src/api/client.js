@@ -14,6 +14,7 @@ api.interceptors.request.use((config) => {
 
 export default api
 
+/** ML service — used for predictions, risk analytics, signals */
 export const mlApi = axios.create({
   baseURL: 'http://localhost:8000',
   timeout: 120_000,

@@ -31,7 +31,7 @@ router.post('/register', async (req, res) => {
     const token = signToken(user._id);
     res.status(201).json({
       token,
-      user: { id: user._id, email: user.email, name: user.name },
+      user: { id: user._id, email: user.email, name: user.name, cashBalance: user.cashBalance },
     });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Registration failed' });
@@ -57,6 +57,7 @@ router.post('/login', async (req, res) => {
         id: user._id,
         email: user.email,
         name: user.name,
+        cashBalance: user.cashBalance,
       },
     });
   } catch (err) {
@@ -70,6 +71,7 @@ router.get('/me', auth(true), (req, res) => {
       id: req.user._id,
       email: req.user.email,
       name: req.user.name,
+      cashBalance: req.user.cashBalance,
     },
   });
 });

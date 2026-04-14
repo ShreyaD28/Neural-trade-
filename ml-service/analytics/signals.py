@@ -57,34 +57,14 @@ def compute_signal(close: pd.Series) -> dict:
     low_bb = float(lower.iloc[-1])
     high_bb = float(upper.iloc[-1])
 
-    votes_buy = 0
-    votes_sell = 0
-    total = 3
-
-    if rsi_v < 30:
-        votes_buy += 1
-    elif rsi_v > 70:
-        votes_sell += 1
-
-    if macd_v > sig_v:
-        votes_buy += 1
-    elif macd_v < sig_v:
-        votes_sell += 1
-
-    if last_price < low_bb:
-        votes_buy += 1
-    elif last_price > high_bb:
-        votes_sell += 1
-
-    if votes_buy > votes_sell and votes_buy >= 2:
+    if rsi_v < 35 and macd_v > sig_v:
         signal = "BUY"
-        confidence = votes_buy / total
-    elif votes_sell > votes_buy and votes_sell >= 2:
+    elif rsi_v > 65 and macd_v < sig_v:
         signal = "SELL"
-        confidence = votes_sell / total
     else:
         signal = "HOLD"
-        confidence = max(votes_buy, votes_sell) / total if max(votes_buy, votes_sell) else 1 / 3
+
+    confidence = min(1.0, max(0.0, abs(rsi_v - 50.0) / 50.0))
 
     return {
         "signal": signal,

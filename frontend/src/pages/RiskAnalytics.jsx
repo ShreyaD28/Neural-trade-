@@ -50,18 +50,27 @@ export default function RiskAnalytics() {
     { name: 'E', v: 1 },
   ])
   const [sharpeVal, setSharpeVal] = useState(2.84)
+  const [drawdown, setDrawdown] = useState(0)
+  const [var95, setVar95] = useState(0)
+  const [hasTrades, setHasTrades] = useState(false)
 
   const loadRisk = useCallback(async () => {
     try {
-      const { data: hist } = await api.get('/market/candles/BTC-USD', {
-        params: { limit: 500, interval: '1m' },
-      })
-      const returns = dailyClosesToReturns(hist.candles)
-      if (returns.length < 8) return
+      const { data: tradeData } = await api.get('/portfolio/trades', { params: { limit: 500 } })
+      const trades = tradeData?.trades ?? []
+      setHasTrades(trades.length > 0)
+      const returns = []
+      for (let i = 1; i < trades.length; i += 1) {
+        const prev = Number(trades[i - 1]?.price ?? 0)
+        const cur = Number(trades[i]?.price ?? 0)
+        if (prev > 0 && Number.isFinite(cur)) returns.push((cur - prev) / prev)
+      }
       const { data } = await mlApi.post('/risk', { returns })
       const s = Number(data.sharpe)
       if (Number.isFinite(s)) {
         setSharpeVal(s)
+        setDrawdown(Number(data.max_drawdown ?? 0))
+        setVar95(Number(data.var_95 ?? 0))
         const norm = Math.min(1, Math.max(0.2, (s + 1) / 4))
         setSharpeData((prev) =>
           prev.map((row, i) => ({
@@ -76,7 +85,9 @@ export default function RiskAnalytics() {
   }, [])
 
   useEffect(() => {
-    queueMicrotask(() => loadRisk())
+    loadRisk()
+    const id = setInterval(loadRisk, 60_000)
+    return () => clearInterval(id)
   }, [loadRisk])
 
   return (
@@ -228,7 +239,7 @@ export default function RiskAnalytics() {
               </span>
             </div>
             <p className="mt-1 font-manrope text-2xl font-bold text-obs-coral">
-              -8.2%
+              {(drawdown * 100).toFixed(2)}%
             </p>
             <div className="mt-3 flex h-16 items-end gap-1">
               {[40, 55, 35, 70, 45, 60, 30].map((h, i) => (
@@ -253,8 +264,8 @@ export default function RiskAnalytics() {
             <div className="mt-3 space-y-3">
               <div>
                 <div className="mb-1 flex justify-between text-xs">
-                  <span className="text-obs-muted">Portfolio</span>
-                  <span className="text-obs-green">+24.8%</span>
+                  <span className="text-obs-muted">VaR (95%)</span>
+                  <span className="text-obs-coral">{(var95 * 100).toFixed(2)}%</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-[var(--radius-obs)] bg-obs-bg">
                   <div className="h-full w-[82%] bg-obs-green" />
@@ -270,11 +281,12 @@ export default function RiskAnalytics() {
                 </div>
               </div>
               <p className="pt-2 font-mono text-sm font-bold text-obs-green">
-                Alpha generation +10.6%
+                {hasTrades ? 'Risk metrics updated from real trades' : 'Make trades to see risk metrics'}
               </p>
             </div>
           </div>
         </div>
+        {!hasTrades ? <p className="text-sm text-obs-muted">Make trades to see risk metrics</p> : null}
 
         <footer
           className={`flex flex-wrap gap-3 rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-bg/90 p-4`}

@@ -12,7 +12,7 @@ const ASSETS = [
   { sym: 'AAPL', name: 'Apple Inc.' },
 ]
 
-const CASH_KEY = 'tradepilot_cash'
+const CASH_KEY = 'neuraltrade_cash'
 
 /** API + socket symbol for candles (e.g. NVDA → NVDA-USD). */
 function toChartSymbol(sym) {
@@ -43,6 +43,7 @@ export default function TradingPanel() {
   const [lastCandle, setLastCandle] = useState(null)
   const [recent, setRecent] = useState([])
   const [cash, setCash] = useState(readCash)
+  const [ownedQty, setOwnedQty] = useState(0)
   const [tf, setTf] = useState('1H')
 
   const chartSymbol = useMemo(() => toChartSymbol(asset), [asset])
@@ -56,24 +57,32 @@ export default function TradingPanel() {
 
   const { prices } = useSocket(chartSymbol, { onCandle })
 
-  const price = prices[chartSymbol]
+  const price = prices[asset] ?? prices[chartSymbol]
   const q = Number(qty)
   const validQ = Number.isFinite(q) && q > 0
   const px = Number.isFinite(price) ? price : null
   const estCost = validQ && px != null ? q * px : null
-  const commission = estCost != null ? estCost * 0.0005 : 0
+  const commission = estCost != null ? 1.5 : 0
   const totalEst = estCost != null ? estCost + commission : null
   const canBuy = validQ && totalEst != null && totalEst <= cash
-  const canSell = validQ
+  const canSell = validQ && q <= ownedQty
 
   const loadRecent = useCallback(async () => {
     try {
-      const { data } = await api.get('/portfolio/trades', { params: { limit: 3 } })
-      setRecent(data.trades ?? [])
+      const [{ data: tradesData }, { data: summaryData }] = await Promise.all([
+        api.get('/portfolio/trades', { params: { limit: 3 } }),
+        api.get('/portfolio/summary'),
+      ])
+      setRecent(tradesData.trades ?? [])
+      const nextCash = Number(summaryData?.cashBalance ?? 0)
+      setCash(nextCash)
+      localStorage.setItem(CASH_KEY, String(nextCash))
+      const pos = (summaryData?.positions ?? []).find((p) => p.symbol === asset)
+      setOwnedQty(Number(pos?.quantity ?? 0))
     } catch {
       setRecent([])
     }
-  }, [])
+  }, [asset])
 
   useEffect(() => {
     queueMicrotask(() => loadRecent())
@@ -83,6 +92,15 @@ export default function TradingPanel() {
     const v = (cash * p) / 100
     if (!px || !Number.isFinite(px)) return
     setQty(String(Math.floor((v / px) * 1e6) / 1e6))
+  }
+
+  function fillMaxQty() {
+    if (side === 'buy') {
+      if (!px || px <= 0) return
+      setQty(String(Math.floor(cash / px)))
+      return
+    }
+    setQty(String(Math.max(0, ownedQty)))
   }
 
   async function execute() {
@@ -97,24 +115,23 @@ export default function TradingPanel() {
     }
     setBusy(true)
     try {
-      await api.post('/portfolio/trades', {
+      const { data } = await api.post('/portfolio/trades', {
         symbol: asset,
         side,
         quantity: q,
         price: px,
         status: 'filled',
       })
-      const notional = q * px
-      setCash((c) => {
-        const next = side === 'buy' ? c - notional : c + notional
-        localStorage.setItem(CASH_KEY, String(next))
-        return next
-      })
-      setMsg('Order filled.')
+      const newCash = Number(data?.newCashBalance ?? cash)
+      setCash(newCash)
+      localStorage.setItem(CASH_KEY, String(newCash))
+      setMsg(
+        `✓ ${side === 'buy' ? 'Bought' : 'Sold'} ${q} ${asset} @ $${px.toFixed(2)} — Total: $${(q * px).toFixed(2)}`
+      )
       setQty('')
       loadRecent()
     } catch (e) {
-      setMsg(e.response?.data?.error ?? e.message ?? 'Failed')
+      setMsg(`✗ ${e.response?.data?.error ?? e.message ?? 'Failed'}`)
     } finally {
       setBusy(false)
     }
@@ -335,6 +352,13 @@ export default function TradingPanel() {
                 placeholder="0"
               />
               <div className="mt-2 flex gap-1">
+                <button
+                  type="button"
+                  onClick={fillMaxQty}
+                  className="rounded-[var(--radius-obs)] border border-[rgba(70,69,84,0.15)] px-2 py-1 font-mono text-[10px] text-obs-primary"
+                >
+                  MAX
+                </button>
                 {[25, 50, 75, 100].map((p) => (
                   <button
                     key={p}
@@ -354,7 +378,7 @@ export default function TradingPanel() {
               <div className="flex justify-between text-obs-muted">
                 <span>Est. price</span>
                 <span className="text-obs-text">
-                  {px != null ? px.toFixed(4) : '—'}
+                  {px != null ? `$${px.toFixed(4)}` : '—'}
                 </span>
               </div>
               <div className="flex justify-between text-obs-muted">
@@ -379,6 +403,7 @@ export default function TradingPanel() {
                 busy ||
                 (side === 'buy' && !canBuy) ||
                 (side === 'sell' && !canSell) ||
+                !validQ ||
                 px == null
               }
               onClick={execute}
@@ -401,7 +426,7 @@ export default function TradingPanel() {
               End-to-end encrypted execution
             </p>
             {msg ? (
-              <p className="mt-3 text-center text-sm text-obs-green">{msg}</p>
+              <p className={`mt-3 text-center text-sm ${msg.startsWith('✗') ? 'text-obs-coral' : 'text-obs-green'}`}>{msg}</p>
             ) : null}
           </div>
         </div>

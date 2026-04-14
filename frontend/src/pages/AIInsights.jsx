@@ -6,29 +6,33 @@ const outline = 'border-[rgba(70,69,84,0.15)]'
 
 export default function AIInsights() {
   const [llmText, setLlmText] = useState('')
-  const [signals, setSignals] = useState({
-    sol: null,
-    btc: null,
-    nvda: null,
-  })
+  const [signals, setSignals] = useState({})
+  const [loading, setLoading] = useState(true)
+
+  const SYMBOLS = ['AAPL', 'TSLA', 'MSFT', 'GOOGL', 'BTC-USD']
 
   useEffect(() => {
     let cancelled = false
     async function load() {
+      setLoading(true)
       try {
-        const [sol, btc, nvda] = await Promise.all([
-          mlApi.get('/signals/SOL-USD').then((r) => r.data).catch(() => null),
-          mlApi.get('/signals/BTC-USD').then((r) => r.data).catch(() => null),
-          mlApi.get('/signals/NVDA').then((r) => r.data).catch(() => null),
-        ])
-        if (!cancelled) setSignals({ sol, btc, nvda })
+        const results = await Promise.all(
+          SYMBOLS.map((s) =>
+            mlApi.get(`/signals/${s}`).then((r) => [s, r.data]).catch(() => [s, null])
+          )
+        )
+        if (!cancelled) setSignals(Object.fromEntries(results))
       } catch {
-        if (!cancelled) setSignals({ sol: null, btc: null, nvda: null })
+        if (!cancelled) setSignals({})
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
     load()
+    const id = setInterval(load, 60_000)
     return () => {
       cancelled = true
+      clearInterval(id)
     }
   }, [])
 
@@ -38,8 +42,7 @@ export default function AIInsights() {
       try {
         const { data } = await api.post('/signals/llm', {
           symbol: 'BTC-USD',
-          candlesSummary: 'Multi-asset panel: SOL, BTC, NVDA signals loaded.',
-          question: 'One paragraph: portfolio-level risk tone. Not financial advice.',
+          question: 'Give me a 2 sentence trading insight',
         })
         if (!cancelled) setLlmText(data.narrative ?? '')
       } catch {
@@ -51,24 +54,7 @@ export default function AIInsights() {
     }
   }, [])
 
-  const solSig = signals.sol ?? {
-    signal: 'STRONG BUY',
-    confidence: 0.88,
-    rsi: 52,
-    macd: 0.02,
-  }
-  const btcSig = signals.btc ?? {
-    signal: 'HOLD',
-    confidence: 0.55,
-    rsi: 48,
-    macd: -0.01,
-  }
-  const nvdaSig = signals.nvda ?? {
-    signal: 'SELL SIGNAL',
-    confidence: 0.72,
-    rsi: 71,
-    macd: 0.08,
-  }
+  const cards = SYMBOLS.map((symbol) => ({ symbol, ...signals[symbol] }))
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-obs-bg px-4 py-4 lg:px-6">
@@ -182,87 +168,28 @@ export default function AIInsights() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          <div
-            className={`rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface/70 p-5 backdrop-blur-md`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-mono font-bold text-obs-text">SOL/USDT</span>
-              <span className="rounded-[var(--radius-obs)] bg-obs-green/20 px-2 py-0.5 font-mono text-[10px] font-bold text-obs-green">
-                STRONG BUY
-              </span>
-            </div>
-            <p className="mt-2 font-mono text-xs text-obs-muted">
-              Spot {solSig.rsi != null ? `RSI ${Number(solSig.rsi).toFixed(1)}` : ''}{' '}
-              · confidence-driven entry
-            </p>
-            <div className="mt-3 h-2 overflow-hidden rounded-[var(--radius-obs)] bg-obs-bg">
-              <div
-                className="h-full bg-obs-green"
-                style={{
-                  width: `${Math.min(100, (solSig.confidence ?? 0.5) * 100)}%`,
-                }}
-              />
-            </div>
-            <p className="mt-3 text-xs text-obs-muted">
-              Momentum + funding neutral: favorable for scaled long.
-            </p>
-            <button
-              type="button"
-              className="mt-4 w-full rounded-[var(--radius-obs-lg)] bg-obs-green py-2 font-manrope text-xs font-bold text-[#111417]"
-            >
-              Execute position
-            </button>
-          </div>
-
-          <div
-            className={`rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface/70 p-5 backdrop-blur-md`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-mono font-bold text-obs-text">BTC/USD</span>
-              <span className="rounded-[var(--radius-obs)] bg-obs-container-high px-2 py-0.5 font-mono text-[10px] font-bold text-obs-muted">
-                HOLD
-              </span>
-            </div>
-            <p className="mt-3 text-xs text-obs-muted">
-              Range-bound chop: wait for volatility expansion or breakout
-              confirmation above key gamma wall.
-              {btcSig.rsi != null && (
-                <span className="mt-1 block font-mono text-[10px] text-obs-muted/80">
-                  RSI {Number(btcSig.rsi).toFixed(1)} · conf.{' '}
-                  {((btcSig.confidence ?? 0) * 100).toFixed(0)}%
-                </span>
-              )}
-            </p>
-            <button
-              type="button"
-              className={`mt-4 w-full rounded-[var(--radius-obs-lg)] border ${outline} py-2 font-manrope text-xs font-semibold text-obs-text`}
-            >
-              View deep analysis
-            </button>
-          </div>
-
-          <div
-            className={`rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface/70 p-5 backdrop-blur-md`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-mono font-bold text-obs-text">NVDA/USD</span>
-              <span className="rounded-[var(--radius-obs)] bg-obs-coral/20 px-2 py-0.5 font-mono text-[10px] font-bold text-obs-coral">
-                SELL SIGNAL
-              </span>
-            </div>
-            <p className="mt-3 text-xs text-obs-muted">
-              RSI overbought ({nvdaSig.rsi != null ? Number(nvdaSig.rsi).toFixed(0) : '70+'}
-              ) — mean reversion risk into earnings drift.
-            </p>
-            <button
-              type="button"
-              className="mt-4 w-full rounded-[var(--radius-obs-lg)] bg-obs-coral py-2 font-manrope text-xs font-bold text-[#111417]"
-            >
-              Exit position
-            </button>
-          </div>
+          {cards.map((c) => {
+            const statusColor =
+              c.signal === 'BUY' ? 'bg-obs-green/20 text-obs-green' : c.signal === 'SELL' ? 'bg-obs-coral/20 text-obs-coral' : 'bg-obs-container-high text-obs-muted'
+            return (
+              <div key={c.symbol} className={`rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface/70 p-5 backdrop-blur-md`}>
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-obs-text">{c.symbol}</span>
+                  <span className={`rounded-[var(--radius-obs)] px-2 py-0.5 font-mono text-[10px] font-bold ${statusColor}`}>{c.signal ?? '—'}</span>
+                </div>
+                <p className="mt-3 text-xs text-obs-muted">
+                  RSI {c.rsi != null ? Number(c.rsi).toFixed(1) : '—'} · MACD {c.macd != null ? Number(c.macd).toFixed(4) : '—'}
+                </p>
+                <div className="mt-3 h-2 overflow-hidden rounded-[var(--radius-obs)] bg-obs-bg">
+                  <div className="h-full bg-obs-primary" style={{ width: `${Math.min(100, Math.max(0, Number(c.confidence ?? 0) * 100))}%` }} />
+                </div>
+                <p className="mt-2 text-xs text-obs-muted">Confidence {Math.round(Number(c.confidence ?? 0) * 100)}%</p>
+              </div>
+            )
+          })}
         </div>
 
+        {loading ? <p className="text-obs-muted">Loading signals...</p> : null}
         {llmText ? (
           <div
             className={`rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface/70 p-5 backdrop-blur-md`}

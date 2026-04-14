@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import api from '../api/client'
-import { mlApi } from '../api/client'
 import CandlestickChart from '../components/CandlestickChart'
 import { useSocket } from '../hooks/useSocket'
 
@@ -10,12 +9,27 @@ const SYMBOL_LABELS = {
   'BTC-USD': 'Bitcoin (BTC)',
   'ETH-USD': 'Ethereum (ETH)',
   'SOL-USD': 'Solana (SOL)',
-  AAPL: 'Apple Inc. (AAPL)',
+  AAPL: 'Apple Inc.',
+  MSFT: 'Microsoft',
+  GOOGL: 'Alphabet',
+  META: 'Meta',
+  AMZN: 'Amazon',
+  NVDA: 'NVIDIA',
+  TSLA: 'Tesla',
 }
 
-const WATCHLIST = ['AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN']
+// All symbols shown in the watchlist sidebar
+const WATCHLIST = ['AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD']
 
-const CASH_KEY = 'tradepilot_cash'
+// Index ETF proxies: SPY ≈ S&P 500, QQQ ≈ NASDAQ 100, USO ≈ Crude Oil, VIXY ≈ VIX
+const INDEX_MAP = [
+  { key: 'SPY',  name: 'S&P 500' },
+  { key: 'QQQ',  name: 'NASDAQ 100' },
+  { key: 'USO',  name: 'CRUDE OIL' },
+  { key: 'VIXY', name: 'VIX INDEX' },
+]
+
+const CASH_KEY = 'neuraltrade_cash'
 
 function readCash() {
   const raw = localStorage.getItem(CASH_KEY)
@@ -27,26 +41,24 @@ function readCash() {
   return Number.isFinite(n) ? n : 100000
 }
 
-const INDEX_STATS = [
-  { name: 'S&P 500', value: '5,234.18', ch: '+0.42%', up: true },
-  { name: 'NASDAQ 100', value: '18,120.44', ch: '+0.81%', up: true },
-  { name: 'CRUDE OIL', value: '78.32', ch: '-0.19%', up: false },
-  { name: 'VIX INDEX', value: '14.28', ch: '-3.2%', up: true },
-]
-
 export default function MainDashboard() {
   const [symbols, setSymbols] = useState(['BTC-USD', 'ETH-USD', 'SOL-USD'])
   const [symbol, setSymbol] = useState('BTC-USD')
   const [tf, setTf] = useState('1D')
   const [lastCandle, setLastCandle] = useState(null)
+  const [prevCandle, setPrevCandle] = useState(null)
   const [pricesRemote, setPricesRemote] = useState({})
+  const [prevPricesRemote, setPrevPricesRemote] = useState({})
+  const [indexStats, setIndexStats] = useState(INDEX_MAP.map((m) => ({ ...m, value: null, ch: null, up: null })))
   const [positions, setPositions] = useState([])
   const [cash] = useState(readCash)
   const [showPattern, setShowPattern] = useState(true)
 
   const onCandle = useCallback(
     (c) => {
-      if (c.symbol === symbol) setLastCandle(c)
+      if (c.symbol === symbol) {
+        setLastCandle((prev) => { setPrevCandle(prev); return c })
+      }
     },
     [symbol]
   )
@@ -66,6 +78,7 @@ export default function MainDashboard() {
     queueMicrotask(() => fetchPortfolio())
   }, [fetchPortfolio])
 
+  // Load symbol list from backend
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -76,41 +89,52 @@ export default function MainDashboard() {
           setSymbols(list)
           setSymbol((s) => (list.includes(s) ? s : list[0]))
         }
-      } catch {
-        /* keep default */
-      }
+      } catch { /* keep default */ }
     })()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [])
 
+  // Live prices from backend (Alpaca if configured, DB fallback otherwise)
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
+    async function fetchPrices() {
       try {
-        const { data } = await mlApi.get('/prices')
-        if (!cancelled) setPricesRemote(data ?? {})
-      } catch {
-        if (!cancelled) setPricesRemote({})
-      }
-    })()
-    const id = setInterval(async () => {
-      try {
-        const { data } = await mlApi.get('/prices')
-        setPricesRemote(data ?? {})
-      } catch {
-        /* ignore */
-      }
-    }, 30_000)
-    return () => {
-      cancelled = true
-      clearInterval(id)
+        const { data } = await api.get('/market/prices')
+        if (!cancelled) {
+          setPrevPricesRemote((p) => Object.keys(data).length ? p : p)
+          setPricesRemote((prev) => { setPrevPricesRemote(prev); return data ?? {} })
+        }
+      } catch { /* keep stale */ }
     }
+    fetchPrices()
+    const id = setInterval(fetchPrices, 15_000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [])
 
-  const headerTitle =
-    SYMBOL_LABELS[symbol] ?? symbol.replace('-', ' / ')
+  // Index ETF prices (SPY, QQQ, USO, VIXY) from backend prices endpoint
+  useEffect(() => {
+    let cancelled = false
+    async function fetchIndex() {
+      try {
+        const { data } = await api.get('/market/prices')
+        if (cancelled) return
+        setIndexStats((prev) =>
+          prev.map((ix) => {
+            const cur = data[ix.key]
+            // We don't have prev close here, so show price only
+            if (cur == null) return ix
+            const formatted = Number(cur).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            return { ...ix, value: formatted, ch: null, up: null }
+          })
+        )
+      } catch { /* keep previous */ }
+    }
+    fetchIndex()
+    const id = setInterval(fetchIndex, 30_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
+
+  const headerTitle = SYMBOL_LABELS[symbol] ?? symbol.replace('-USD', '').replace('/', ' / ')
 
   const live = socketPrices[symbol]
   const remoteClose = pricesRemote[symbol]
@@ -121,10 +145,14 @@ export default function MainDashboard() {
         ? Number(remoteClose)
         : null
 
-  const changePct = useMemo(() => {
-    if (displayPrice == null) return null
-    return ((displayPrice / (displayPrice * 0.997)) - 1) * 100
-  }, [displayPrice])
+  // Real change %: compare current candle close vs previous candle close
+  let changePct = null
+  if (lastCandle?.close != null && prevCandle?.close != null) {
+    changePct = ((lastCandle.close - prevCandle.close) / prevCandle.close) * 100
+  } else if (displayPrice != null && prevPricesRemote[symbol] != null) {
+    const prevP = Number(prevPricesRemote[symbol])
+    if (prevP > 0) changePct = ((displayPrice - prevP) / prevP) * 100
+  }
 
   const positionsValue = positions.reduce(
     (s, p) => s + (p.marketValue ?? p.quantity * (p.markPrice ?? 0)),
@@ -133,14 +161,20 @@ export default function MainDashboard() {
   const totalEquity = cash + positionsValue
 
   const watchlistRows = WATCHLIST.map((sym) => {
-    const p = socketPrices[sym] ?? pricesRemote[sym]
+    const live = socketPrices[sym]
+    const remote = pricesRemote[sym]
+    const prev = prevPricesRemote[sym]
+    const p = live ?? remote
     const n = p != null ? Number(p) : null
-    const mockCh = (sym.length % 5) * 0.31 - 0.6
+    let pctVal = null
+    if (n != null && prev != null && Number(prev) > 0) {
+      pctVal = ((n - Number(prev)) / Number(prev)) * 100
+    }
     return {
       sym,
       price: n,
-      pct: mockCh,
-      up: mockCh >= 0,
+      pct: pctVal,
+      up: pctVal != null ? pctVal >= 0 : null,
     }
   })
 
@@ -228,6 +262,7 @@ export default function MainDashboard() {
             </select>
             <CandlestickChart
               symbol={symbol}
+              tf={tf}
               height={440}
               liveCandle={lastCandle}
             />
@@ -264,7 +299,7 @@ export default function MainDashboard() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {INDEX_STATS.map((ix) => (
+            {indexStats.map((ix) => (
               <div
                 key={ix.name}
                 className={`rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface/70 p-4 backdrop-blur-md`}
@@ -273,13 +308,17 @@ export default function MainDashboard() {
                   {ix.name}
                 </p>
                 <p className="mt-1 font-manrope text-lg font-bold text-obs-text">
-                  {ix.value}
+                  {ix.value != null ? `$${ix.value}` : '—'}
                 </p>
-                <p
-                  className={`mt-1 font-mono text-xs font-semibold ${ix.up ? 'text-obs-green' : 'text-obs-coral'}`}
-                >
-                  {ix.ch}
-                </p>
+                {ix.ch != null ? (
+                  <p
+                    className={`mt-1 font-mono text-xs font-semibold ${ix.up ? 'text-obs-green' : 'text-obs-coral'}`}
+                  >
+                    {ix.ch}
+                  </p>
+                ) : (
+                  <p className="mt-1 font-mono text-xs text-obs-muted">live</p>
+                )}
               </div>
             ))}
           </div>
@@ -296,7 +335,11 @@ export default function MainDashboard() {
               {watchlistRows.map((w) => (
                 <li
                   key={w.sym}
-                  className="flex items-center justify-between rounded-[var(--radius-obs-lg)] bg-obs-bg/50 px-2 py-2"
+                  className="flex items-center justify-between rounded-[var(--radius-obs-lg)] bg-obs-bg/50 px-2 py-2 cursor-pointer hover:bg-obs-bg/70"
+                  onClick={() => {
+                    setSymbol(w.sym);
+                    setLastCandle(null);
+                  }}
                 >
                   <span className="font-mono text-sm font-semibold text-obs-text">
                     {w.sym}
@@ -307,12 +350,15 @@ export default function MainDashboard() {
                         ? `$${w.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
                         : '—'}
                     </span>
-                    <span
-                      className={`font-mono text-xs ${w.up ? 'text-obs-green' : 'text-obs-coral'}`}
-                    >
-                      {w.up ? '+' : ''}
-                      {w.pct.toFixed(2)}%
-                    </span>
+                    {w.pct != null ? (
+                      <span
+                        className={`font-mono text-xs ${w.up ? 'text-obs-green' : 'text-obs-coral'}`}
+                      >
+                        {w.up ? '+' : ''}{w.pct.toFixed(2)}%
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs text-obs-muted">—</span>
+                    )}
                   </span>
                 </li>
               ))}

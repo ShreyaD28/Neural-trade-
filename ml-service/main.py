@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 import yfinance as yf
 from dotenv import load_dotenv
@@ -58,7 +59,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-PRICE_SYMBOLS = ["AAPL", "TSLA", "MSFT", "GOOGL", "BTC-USD"]
+STOCK_SYMBOLS = ["AAPL", "TSLA", "MSFT", "GOOGL", "NVDA", "META", "AMZN"]
+CRYPTO_SYMBOLS = ["BTC-USD", "ETH-USD", "SOL-USD"]
+INDEX_SYMBOLS = ["SPY", "QQQ", "USO", "VIXY"]
+ALL_SYMBOLS = STOCK_SYMBOLS + CRYPTO_SYMBOLS + INDEX_SYMBOLS
+PRICE_SYMBOLS = [
+    "AAPL",
+    "TSLA",
+    "MSFT",
+    "GOOGL",
+    "NVDA",
+    "META",
+    "AMZN",
+    "BTC-USD",
+    "ETH-USD",
+    "GC=F",
+]
 
 
 class PredictRequest(BaseModel):
@@ -77,19 +93,61 @@ class SignalPostBody(BaseModel):
 
 @app.get("/prices")
 def get_prices():
-    """Latest close for core watchlist."""
-    out: dict[str, float | None] = {}
+    """Latest close for core watchlist via Yahoo Finance (no API key required)."""
+    out: dict[str, Optional[float]] = {}
+    display_names = {"GC=F": "GOLD"}
     for sym in PRICE_SYMBOLS:
         try:
             t = yf.Ticker(sym)
             hist = t.history(period="5d", auto_adjust=True)
-            if hist.empty:
-                out[sym] = None
-            else:
-                out[sym] = float(hist["Close"].iloc[-1])
+            key = display_names.get(sym, sym)
+            out[key] = float(hist["Close"].iloc[-1]) if not hist.empty else None
         except Exception:
-            out[sym] = None
+            key = display_names.get(sym, sym)
+            out[key] = None
     return out
+
+
+@app.get("/candles/{symbol}")
+def get_candles(symbol: str):
+    """Return 1m intraday candles from Yahoo Finance for a symbol."""
+    try:
+        df = yf.download(symbol, period="1d", interval="1m", progress=False)
+        if df.empty:
+            return []
+
+        # yfinance can return MultiIndex columns for single/multi ticker downloads.
+        if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
+            df.columns = df.columns.get_level_values(0)
+        df = df.reset_index()
+
+        time_col = "Datetime" if "Datetime" in df.columns else "Date"
+        if time_col not in df.columns:
+            return []
+
+        candles = []
+        for _, row in df.iterrows():
+            ts = row.get(time_col)
+            if ts is None:
+                continue
+            candles.append(
+                {
+                    "time": int(ts.timestamp()),
+                    "open": float(row.get("Open", 0.0) or 0.0),
+                    "high": float(row.get("High", 0.0) or 0.0),
+                    "low": float(row.get("Low", 0.0) or 0.0),
+                    "close": float(row.get("Close", 0.0) or 0.0),
+                    "volume": int(row.get("Volume", 0) or 0),
+                }
+            )
+
+        candles.sort(key=lambda c: c["time"])
+        return candles
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch candles for {symbol.upper()}: {e}",
+        ) from e
 
 
 @app.post("/predict")
@@ -104,8 +162,6 @@ def post_predict(body: PredictRequest):
 
 @app.post("/risk")
 def post_risk(body: RiskRequest):
-    if not body.returns:
-        raise HTTPException(status_code=400, detail="returns must be non-empty")
     s = risk_summary(body.returns)
     return {"sharpe": s["sharpe"], "max_drawdown": s["max_drawdown"], "var_95": s["var_95"]}
 

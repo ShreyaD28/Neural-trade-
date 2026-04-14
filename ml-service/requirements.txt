@@ -8,3 +8,4 @@ torch>=2.4.0
 yfinance>=0.2.40
 pymongo>=4.10.0
 python-dotenv>=1.0.0
+httpx>=0.27.0

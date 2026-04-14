@@ -19,6 +19,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    cashBalance: {
+      type: Number,
+      default: 100000,
+      min: 0,
+    },
   },
   { timestamps: true }
 );

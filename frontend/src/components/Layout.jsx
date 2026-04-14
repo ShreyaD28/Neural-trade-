@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import TickerTape from './TickerTape'
 import { useSocket } from '../hooks/useSocket'
+import api from '../api/client'
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: 'space_dashboard' },
@@ -16,9 +18,38 @@ const outline = 'border-[rgba(70,69,84,0.15)]'
 export default function Layout() {
   const navigate = useNavigate()
   const { prices } = useSocket(null)
+  const [cash, setCash] = useState(null)
+  const [cashLoading, setCashLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    async function loadCash() {
+      setCashLoading(true)
+      try {
+        const { data } = await api.get('/portfolio/summary')
+        const value = Number(data?.cashBalance ?? 0)
+        if (!mounted) return
+        setCash(value)
+        localStorage.setItem('neuraltrade_cash', String(value))
+      } catch {
+        if (!mounted) return
+        const cached = Number(localStorage.getItem('neuraltrade_cash') ?? 0)
+        setCash(Number.isFinite(cached) ? cached : 0)
+      } finally {
+        if (mounted) setCashLoading(false)
+      }
+    }
+    loadCash()
+    const id = setInterval(loadCash, 30_000)
+    return () => {
+      mounted = false
+      clearInterval(id)
+    }
+  }, [])
 
   function logout() {
     localStorage.removeItem('token')
+    localStorage.removeItem('neuraltrade_cash')
     navigate('/', { replace: true })
   }
 
@@ -93,6 +124,9 @@ export default function Layout() {
           >
             Log out
           </button>
+          <p className="mt-2 text-center font-mono text-[10px] text-obs-muted">
+            Cash: {cashLoading ? 'Loading...' : `$${Number(cash ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          </p>
         </div>
       </aside>
 

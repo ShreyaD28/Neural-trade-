@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Cell,
   Pie,
@@ -6,22 +6,11 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts'
-import api from '../api/client'
+import api, { mlApi } from '../api/client'
 
 const outline = 'border-[rgba(70,69,84,0.15)]'
 
-const ALLOC = [
-  { name: 'Crypto', value: 45, color: '#c0c1ff' },
-  { name: 'Stocks', value: 35, color: '#44dfa3' },
-  { name: 'Cash', value: 20, color: '#ffb3ac' },
-]
-
-const MOCK_HOLDINGS = [
-  { symbol: 'BTC', qty: 2.4, avg: 42000, cmp: 94520, pnlPct: 125.8, up: true },
-  { symbol: 'AAPL', qty: 1200, avg: 142, cmp: 176.7, pnlPct: 24.4, up: true },
-  { symbol: 'ETH', qty: 48, avg: 3200, cmp: 3034, pnlPct: -5.2, up: false },
-  { symbol: 'NVDA', qty: 800, avg: 412, cmp: 875, pnlPct: 112.3, up: true },
-]
+const CRYPTO_BASES = new Set(['BTC', 'ETH', 'SOL'])
 
 const DOT = {
   BTC: '#c0c1ff',
@@ -31,41 +20,70 @@ const DOT = {
 }
 
 export default function PortfolioOverview() {
-  const [rows, setRows] = useState(MOCK_HOLDINGS)
+  const [rows, setRows] = useState([])
+  const [cashBalance, setCashBalance] = useState(0)
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/portfolio/summary')
-      const pos = data.positions ?? []
-      const mapped = pos.map((p) => {
-        const avg = p.avgPrice ?? 0
-        const cmp = p.markPrice ?? avg
-        const pnlPct =
-          avg && cmp ? ((cmp - avg) / avg) * 100 : 0
+      const [{ data: summary }, { data: priceMap }] = await Promise.all([
+        api.get('/portfolio/summary'),
+        mlApi.get('/prices'),
+      ])
+      setCashBalance(Number(summary?.cashBalance ?? 0))
+      const mapped = (summary?.positions ?? []).map((p) => {
+        const symbol = p.symbol?.toUpperCase() ?? ''
+        const base = symbol.replace('-USD', '')
+        const avg = Number(p.avgPrice ?? 0)
+        const cmp = Number(priceMap?.[symbol] ?? priceMap?.[base] ?? p.markPrice ?? avg)
+        const qty = Number(p.quantity ?? 0)
+        const pnlPct = avg > 0 ? ((cmp - avg) / avg) * 100 : 0
         return {
-          symbol: p.symbol?.replace('-USD', '') ?? '—',
-          qty: p.quantity,
+          symbol: base || '—',
+          qty,
           avg,
           cmp,
           pnlPct,
           up: pnlPct >= 0,
         }
       })
-      if (mapped.length) {
-        const keys = new Set(mapped.map((m) => m.symbol))
-        const filler = MOCK_HOLDINGS.filter((m) => !keys.has(m.symbol))
-        setRows([...mapped, ...filler].slice(0, 6))
-      } else {
-        setRows(MOCK_HOLDINGS)
-      }
+      setRows(mapped)
     } catch {
-      setRows(MOCK_HOLDINGS)
+      setRows([])
+      setCashBalance(0)
     }
   }, [])
 
   useEffect(() => {
-    queueMicrotask(() => load())
+    load()
+    const id = setInterval(load, 30_000)
+    return () => clearInterval(id)
   }, [load])
+
+  const totals = useMemo(() => {
+    const marketValue = rows.reduce((sum, r) => sum + r.qty * r.cmp, 0)
+    const totalBalance = cashBalance + marketValue
+    const totalCost = rows.reduce((sum, r) => sum + r.qty * r.avg, 0)
+    const totalPnl = marketValue - totalCost
+
+    const cryptoValue = rows
+      .filter((r) => CRYPTO_BASES.has(r.symbol))
+      .reduce((sum, r) => sum + r.qty * r.cmp, 0)
+    const stocksValue = Math.max(0, marketValue - cryptoValue)
+
+    const alloc = totalBalance > 0
+      ? [
+          { name: 'Crypto', value: (cryptoValue / totalBalance) * 100, color: '#c0c1ff' },
+          { name: 'Stocks', value: (stocksValue / totalBalance) * 100, color: '#44dfa3' },
+          { name: 'Cash', value: (cashBalance / totalBalance) * 100, color: '#ffb3ac' },
+        ]
+      : [
+          { name: 'Crypto', value: 0, color: '#c0c1ff' },
+          { name: 'Stocks', value: 0, color: '#44dfa3' },
+          { name: 'Cash', value: 100, color: '#ffb3ac' },
+        ]
+
+    return { totalBalance, totalPnl, alloc }
+  }, [rows, cashBalance])
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-obs-bg px-4 py-4 lg:px-6">
@@ -76,20 +94,24 @@ export default function PortfolioOverview() {
           >
             <p className="text-xs text-obs-muted">Total balance</p>
             <p className="mt-1 font-manrope text-2xl font-bold text-obs-text">
-              $1,284,592.42
+              ${totals.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
-            <p className="mt-1 font-mono text-sm text-obs-green">+2.4%</p>
+            <p className="mt-1 font-mono text-sm text-obs-muted">
+              Available cash: ${cashBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
           </div>
           <div
             className={`rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface/70 p-5 backdrop-blur-md`}
           >
             <p className="text-xs text-obs-muted">Daily P&amp;L</p>
-            <p className="mt-1 font-manrope text-2xl font-bold text-obs-green">
-              +$14,203.11
+            <p className={`mt-1 font-manrope text-2xl font-bold ${totals.totalPnl >= 0 ? 'text-obs-green' : 'text-obs-coral'}`}>
+              {totals.totalPnl >= 0 ? '+' : '-'}$
+              {Math.abs(totals.totalPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <div className="mt-2 h-2 overflow-hidden rounded-[var(--radius-obs)] bg-obs-bg">
               <div
-                className="h-full w-[72%] rounded-[var(--radius-obs)] bg-obs-green"
+                className={`h-full rounded-[var(--radius-obs)] ${totals.totalPnl >= 0 ? 'bg-obs-green' : 'bg-obs-coral'}`}
+                style={{ width: `${Math.min(100, Math.max(5, Math.abs(totals.totalPnl) / Math.max(1, totals.totalBalance) * 100))}%` }}
               />
             </div>
           </div>
@@ -97,12 +119,14 @@ export default function PortfolioOverview() {
             className={`rounded-[var(--radius-obs-xl)] border ${outline} bg-obs-surface/70 p-5 backdrop-blur-md`}
           >
             <p className="text-xs text-obs-muted">Total P&amp;L (annual)</p>
-            <p className="mt-1 font-manrope text-2xl font-bold text-obs-text">
-              +$412,094.00
+            <p className={`mt-1 font-manrope text-2xl font-bold ${totals.totalPnl >= 0 ? 'text-obs-green' : 'text-obs-coral'}`}>
+              {totals.totalPnl >= 0 ? '+' : '-'}$
+              {Math.abs(totals.totalPnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <div className="mt-2 h-2 overflow-hidden rounded-[var(--radius-obs)] bg-obs-bg">
               <div
-                className="h-full w-[84%] rounded-[var(--radius-obs)] bg-obs-primary/80"
+                className="h-full rounded-[var(--radius-obs)] bg-obs-primary/80"
+                style={{ width: `${Math.min(100, Math.max(5, Math.abs(totals.totalPnl) / Math.max(1, totals.totalBalance) * 100))}%` }}
               />
             </div>
           </div>
@@ -123,7 +147,7 @@ export default function PortfolioOverview() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={ALLOC}
+                    data={totals.alloc}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
@@ -132,7 +156,7 @@ export default function PortfolioOverview() {
                     outerRadius={100}
                     paddingAngle={2}
                   >
-                    {ALLOC.map((entry) => (
+                    {totals.alloc.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
@@ -148,13 +172,13 @@ export default function PortfolioOverview() {
               </ResponsiveContainer>
             </div>
             <ul className="mt-2 flex flex-wrap justify-center gap-4 text-xs">
-              {ALLOC.map((a) => (
+              {totals.alloc.map((a) => (
                 <li key={a.name} className="flex items-center gap-2 text-obs-muted">
                   <span
                     className="h-2 w-2 rounded-[var(--radius-obs)]"
                     style={{ background: a.color }}
                   />
-                  {a.name} {a.value}%
+                  {a.name} {a.value.toFixed(1)}%
                 </li>
               ))}
             </ul>
@@ -186,6 +210,13 @@ export default function PortfolioOverview() {
                   </tr>
                 </thead>
                 <tbody>
+                  {rows.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-obs-muted" colSpan={5}>
+                        No positions yet — make your first trade!
+                      </td>
+                    </tr>
+                  )}
                   {rows.map((r) => (
                     <tr
                       key={r.symbol}

@@ -1,70 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 
 const outline = 'border-[rgba(70,69,84,0.15)]'
 
-const MOCK_ROWS = [
-  {
-    id: '1',
-    date: '2026-04-11 09:42:11',
-    type: 'buy',
-    symbol: 'NVDA',
-    qty: 120,
-    entry: 884.2,
-    exit: 891.5,
-    pnl: 876.0,
-    pnlPct: 0.82,
-    status: 'filled',
-  },
-  {
-    id: '2',
-    date: '2026-04-10 14:18:03',
-    type: 'sell',
-    symbol: 'BTC-USD',
-    qty: 0.45,
-    entry: 98200,
-    exit: 97840,
-    pnl: -162.0,
-    pnlPct: -0.37,
-    status: 'filled',
-  },
-  {
-    id: '3',
-    date: '2026-04-09 11:05:44',
-    type: 'buy',
-    symbol: 'ETH-USD',
-    qty: 8,
-    entry: 3180,
-    exit: 3224,
-    pnl: 352.0,
-    pnlPct: 1.38,
-    status: 'filled',
-  },
-  {
-    id: '4',
-    date: '2026-04-08 16:22:19',
-    type: 'sell',
-    symbol: 'AAPL',
-    qty: 400,
-    entry: 178.2,
-    exit: 177.9,
-    pnl: -120.0,
-    pnlPct: -0.17,
-    status: 'cancelled',
-  },
-  {
-    id: '5',
-    date: '2026-04-07 10:01:55',
-    type: 'buy',
-    symbol: 'SOL-USD',
-    qty: 200,
-    entry: 142.8,
-    exit: 148.1,
-    pnl: 1060.0,
-    pnlPct: 3.71,
-    status: 'filled',
-  },
-]
+const PAGE_SIZE = 10
 
 const AVATAR = {
   NVDA: '#c0c1ff',
@@ -76,44 +16,57 @@ const AVATAR = {
 
 function mapTrade(t) {
   const side = t.side === 'buy' ? 'buy' : 'sell'
-  const pnl = (Number(t.price) * Number(t.quantity) * (side === 'sell' ? 0.002 : -0.002))
+  const total = Number(t.total ?? Number(t.price) * Number(t.quantity))
+  const pnl = Number(t.profit ?? t.pnl ?? 0)
   return {
     id: t._id ?? t.id,
-    date: t.filledAt ?? t.createdAt ?? '',
+    date: t.createdAt ?? '',
     type: side,
     symbol: t.symbol,
     qty: t.quantity,
     entry: Number(t.price),
-    exit: Number(t.price) * (1 + (side === 'buy' ? 0.008 : -0.005)),
+    total,
     pnl,
-    pnlPct: side === 'buy' ? 0.8 : -0.2,
     status: t.status ?? 'filled',
   }
 }
 
 export default function TradeHistory() {
+  const navigate = useNavigate()
   const [rangeTab, setRangeTab] = useState('all')
-  const [rows, setRows] = useState(MOCK_ROWS)
+  const [rows, setRows] = useState([])
+  const [activeTrades, setActiveTrades] = useState(0)
+  const [page, setPage] = useState(1)
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/portfolio/trades', { params: { limit: 5 } })
-      const trades = data.trades ?? []
-      if (trades.length) {
-        setRows(
-          trades.map(mapTrade).concat(MOCK_ROWS).slice(0, 8)
-        )
-      } else {
-        setRows(MOCK_ROWS)
-      }
+      const [{ data: tradeData }, { data: summaryData }] = await Promise.all([
+        api.get('/portfolio/trades', { params: { limit: 500 } }),
+        api.get('/portfolio/summary'),
+      ])
+      const trades = tradeData.trades ?? []
+      setRows(trades.map(mapTrade))
+      setActiveTrades((summaryData?.positions ?? []).length)
+      setPage(1)
     } catch {
-      setRows(MOCK_ROWS)
+      setRows([])
+      setActiveTrades(0)
+      setPage(1)
     }
   }, [])
 
   useEffect(() => {
-    queueMicrotask(() => load())
+    load()
   }, [load])
+
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE
+    return rows.slice(start, start + PAGE_SIZE)
+  }, [rows, page])
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const profitableTrades = rows.filter((r) => r.pnl > 0).length
+  const winRate = rows.length ? (profitableTrades / rows.length) * 100 : 0
+  const totalPnl = rows.reduce((sum, r) => sum + r.pnl, 0)
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-obs-bg px-4 py-4 lg:px-6">
@@ -163,10 +116,10 @@ export default function TradeHistory() {
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: 'Win rate', val: '68.4%', color: 'text-obs-green' },
-            { label: 'Total P&L', val: '+$12,450.21', color: 'text-obs-green' },
-            { label: 'Avg execution', val: '14ms', color: 'text-obs-text' },
-            { label: 'Active trades', val: '3', color: 'text-obs-primary' },
+            { label: 'Win rate', val: `${winRate.toFixed(1)}%`, color: 'text-obs-green' },
+            { label: 'Total P&L', val: `${totalPnl >= 0 ? '+' : '-'}$${Math.abs(totalPnl).toFixed(2)}`, color: totalPnl >= 0 ? 'text-obs-green' : 'text-obs-coral' },
+            { label: 'Avg execution', val: '< 300ms', color: 'text-obs-text' },
+            { label: 'Active trades', val: String(activeTrades), color: 'text-obs-primary' },
           ].map((c) => (
             <div
               key={c.label}
@@ -195,20 +148,31 @@ export default function TradeHistory() {
                   <th className="px-4 py-3">Quantity</th>
                   <th className="px-4 py-3">Entry / exit</th>
                   <th className="px-4 py-3">P&amp;L total</th>
-                  <th className="px-4 py-3">P&amp;L%</th>
                   <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, 5).map((r) => (
+                {pagedRows.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center">
+                      <p className="text-obs-muted">No trades yet</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/trade')}
+                        className="mt-3 rounded-[var(--radius-obs-lg)] bg-obs-primary/20 px-3 py-1.5 font-mono text-[10px] font-bold uppercase text-obs-primary"
+                      >
+                        Go to Trade
+                      </button>
+                    </td>
+                  </tr>
+                )}
+                {pagedRows.map((r) => (
                   <tr
                     key={r.id}
                     className="border-b border-[rgba(70,69,84,0.08)]"
                   >
                     <td className="px-4 py-3 font-mono text-xs text-obs-muted">
-                      {typeof r.date === 'string'
-                        ? r.date.replace('T', ' ').slice(0, 19)
-                        : new Date(r.date).toLocaleString()}
+                      {new Date(r.date).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -238,19 +202,12 @@ export default function TradeHistory() {
                       {r.qty}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-obs-muted">
-                      {Number(r.entry).toFixed(2)} / {Number(r.exit).toFixed(2)}
+                      ${Number(r.entry).toFixed(2)}
                     </td>
                     <td
                       className={`px-4 py-3 font-mono font-semibold ${r.pnl >= 0 ? 'text-obs-green' : 'text-obs-coral'}`}
                     >
-                      {r.pnl >= 0 ? '+' : ''}$
-                      {Math.abs(r.pnl).toFixed(2)}
-                    </td>
-                    <td
-                      className={`px-4 py-3 font-mono font-semibold ${r.pnlPct >= 0 ? 'text-obs-green' : 'text-obs-coral'}`}
-                    >
-                      {r.pnlPct >= 0 ? '+' : ''}
-                      {r.pnlPct?.toFixed?.(2) ?? r.pnlPct}%
+                      ${Number(r.total).toFixed(2)}
                     </td>
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase text-obs-muted">
@@ -270,9 +227,27 @@ export default function TradeHistory() {
             </table>
           </div>
           <div className="flex justify-end border-t border-[rgba(70,69,84,0.15)] px-4 py-2">
-            <span className="font-mono text-[10px] text-obs-muted">
-              Page 1 · 5 rows
-            </span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className={`rounded-[var(--radius-obs)] border ${outline} px-2 py-1 font-mono text-[10px] text-obs-muted disabled:opacity-50`}
+              >
+                Prev
+              </button>
+              <span className="font-mono text-[10px] text-obs-muted">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className={`rounded-[var(--radius-obs)] border ${outline} px-2 py-1 font-mono text-[10px] text-obs-muted disabled:opacity-50`}
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
 

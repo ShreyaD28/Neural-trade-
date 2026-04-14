@@ -24,6 +24,7 @@ function candleToBar(c) {
  */
 export default function CandlestickChart({
   symbol,
+  tf = '1m',
   height = DEFAULT_HEIGHT,
   liveCandle = null,
 }) {
@@ -80,7 +81,7 @@ export default function CandlestickChart({
     ;(async () => {
       try {
         const { data } = await api.get(`/market/candles/${encodeURIComponent(symbol)}`, {
-          params: { limit: 400, interval: '1m' },
+          params: { limit: 400, interval: tf },
         })
         if (cancelled) return
         const raw = data.candles ?? []
