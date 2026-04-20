@@ -26,6 +26,21 @@ ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(ENV_PATH)
 
 MONGODB_URI = os.getenv("MONGODB_URI", "")
+CORS_ORIGIN = os.getenv("CORS_ORIGIN", "")
+
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+]
+
+configured_origins = [
+    origin.strip()
+    for origin in CORS_ORIGIN.split(",")
+    if origin.strip()
+]
+allowed_origins = list(dict.fromkeys(DEFAULT_CORS_ORIGINS + configured_origins))
 
 
 @asynccontextmanager
@@ -48,12 +63,7 @@ app = FastAPI(title="Trading ML Service", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
