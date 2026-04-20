@@ -167,4 +167,39 @@ router.get('/summary', async (req, res) => {
   }
 });
 
+/** Adjust paper-trading cash balance from the dashboard wallet controls */
+router.post('/cash', async (req, res) => {
+  try {
+    const mode = String(req.body?.mode || '').toLowerCase();
+    const amount = Number(req.body?.amount);
+
+    if (!['deposit', 'withdraw'].includes(mode)) {
+      return res.status(400).json({ error: 'mode must be deposit or withdraw' });
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+
+    const currentCash = Number(req.user.cashBalance ?? 0);
+    const nextCash =
+      mode === 'deposit'
+        ? currentCash + amount
+        : currentCash - amount;
+
+    if (nextCash < 0) {
+      return res.status(400).json({ error: 'Insufficient funds for withdrawal' });
+    }
+
+    req.user.cashBalance = nextCash;
+    await req.user.save();
+
+    res.json({
+      success: true,
+      cashBalance: Number(req.user.cashBalance),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed to update cash balance' });
+  }
+});
+
 module.exports = router;

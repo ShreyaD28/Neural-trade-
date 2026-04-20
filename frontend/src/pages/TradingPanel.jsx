@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import api from '../api/client'
 import CandlestickChart from '../components/CandlestickChart'
 import { useSocket } from '../hooks/useSocket'
@@ -19,14 +19,6 @@ const TIMEFRAME_MAP = {
 }
 
 const CASH_KEY = 'neuraltrade_cash'
-
-/** API + socket symbol for candles (e.g. NVDA → NVDA-USD). */
-function toChartSymbol(sym) {
-  if (sym === 'NVDA') return 'NVDA-USD'
-  if (sym?.includes?.('-')) return sym
-  if (!sym) return 'NVDA-USD'
-  return `${sym}-USD`
-}
 
 function readCash() {
   const raw = localStorage.getItem(CASH_KEY)
@@ -52,18 +44,16 @@ export default function TradingPanel() {
   const [timeframe, setTimeframe] = useState('1D')
   const [toast, setToast] = useState({ open: false, type: 'success', message: '' })
 
-  const chartSymbol = useMemo(() => toChartSymbol(asset), [asset])
-
   const onCandle = useCallback(
     (c) => {
-      if (c.symbol === chartSymbol) setLastCandle(c)
+      if (c.symbol === asset) setLastCandle(c)
     },
-    [chartSymbol]
+    [asset]
   )
 
-  const { prices } = useSocket(chartSymbol, { onCandle })
+  const { prices } = useSocket(asset, { onCandle })
 
-  const price = prices[asset] ?? prices[chartSymbol]
+  const price = prices[asset]
   const q = Number(qty)
   const validQ = Number.isFinite(q) && q > 0
   const px = Number.isFinite(price) ? price : null
@@ -112,7 +102,8 @@ export default function TradingPanel() {
   function fillMaxQty() {
     if (side === 'buy') {
       if (!px || px <= 0) return
-      setQty(String(Math.floor(cash / px)))
+      const maxAffordable = Math.floor(Math.max(0, cash - 1.5) / px)
+      setQty(String(Math.max(0, maxAffordable)))
       return
     }
     setQty(String(Math.max(0, ownedQty)))
@@ -153,8 +144,9 @@ export default function TradingPanel() {
     try {
       const availableCash = await resolveCashBalance()
       const tradeTotal = q * px
+      const requiredCash = tradeTotal + 1.5
 
-      if (side === 'buy' && tradeTotal > availableCash) {
+      if (side === 'buy' && requiredCash > availableCash) {
         setToast({ open: true, type: 'error', message: 'Insufficient funds' })
         return
       }

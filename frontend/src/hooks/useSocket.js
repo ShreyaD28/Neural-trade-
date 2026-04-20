@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5050'
+const rawSocketUrl =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://localhost:5050'
+
+const SOCKET_URL = rawSocketUrl.replace(/\/api\/?$/, '')
 
 /**
  * @param {string | null} symbol - subscribe to this symbol's room

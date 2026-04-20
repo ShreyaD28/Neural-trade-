@@ -1,7 +1,14 @@
 import axios from 'axios'
 
-const baseURL = import.meta.env.VITE_API_URL
-  ? import.meta.env.VITE_API_URL + '/api'
+const apiOrigin = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
+const mlOrigin = import.meta.env.VITE_ML_URL || import.meta.env.VITE_ML_API_URL
+
+const normalizedApiOrigin = apiOrigin
+  ? apiOrigin.replace(/\/api\/?$/, '')
+  : null
+
+const baseURL = normalizedApiOrigin
+  ? normalizedApiOrigin + '/api'
   : 'http://localhost:5050/api'
 
 const api = axios.create({
@@ -19,6 +26,6 @@ api.interceptors.request.use((config) => {
 export default api
 
 export const mlApi = axios.create({
-  baseURL: import.meta.env.VITE_ML_URL || 'http://localhost:8000',
+  baseURL: mlOrigin || 'http://localhost:8000',
   timeout: 120_000,
 })

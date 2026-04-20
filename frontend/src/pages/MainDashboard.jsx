@@ -72,6 +72,9 @@ export default function MainDashboard() {
     try {
       const { data } = await api.get('/portfolio/summary')
       setPositions(data.positions ?? [])
+      const nextCash = Number(data.cashBalance ?? 0)
+      setCash(nextCash)
+      localStorage.setItem(CASH_KEY, String(nextCash))
     } catch {
       setPositions([])
     }
@@ -200,13 +203,16 @@ export default function MainDashboard() {
     try {
       // Uncomment to enable on-chain tx once contract + env are configured:
       // await submitWalletTransaction(walletModal.mode, amount)
-      setCash((prev) => {
-        const next = walletModal.mode === 'deposit' ? prev + amount : prev - amount
-        localStorage.setItem(CASH_KEY, String(next))
-        return next
+      const { data } = await api.post('/portfolio/cash', {
+        mode: walletModal.mode,
+        amount,
       })
+      const nextCash = Number(data?.cashBalance ?? cash)
+      setCash(nextCash)
+      localStorage.setItem(CASH_KEY, String(nextCash))
       setWalletAmount('')
       setWalletModal((m) => ({ ...m, open: false }))
+      fetchPortfolio()
     } catch (err) {
       console.error('Wallet transaction failed:', err)
     } finally {

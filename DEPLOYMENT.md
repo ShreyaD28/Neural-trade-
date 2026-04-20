@@ -89,8 +89,8 @@ Test:
 5. Output directory:
    - `dist`
 6. Add env vars:
-   - `VITE_API_BASE_URL=https://<backend-service>.onrender.com/api`
-   - `VITE_ML_API_URL=https://<ml-service>.onrender.com`
+   - `VITE_API_URL=https://<backend-service>.onrender.com`
+   - `VITE_ML_URL=https://<ml-service>.onrender.com`
    - `VITE_GOOGLE_CLIENT_ID=<google oauth client id>`
 7. Deploy and copy URL:
    - `https://<your-app>.vercel.app`
@@ -166,4 +166,3 @@ Redeploy backend.
   - `CORS_ORIGIN`
   - Google OAuth origins/redirects
   - Vercel env vars
-
