@@ -11,6 +11,14 @@
 
 ---
 
+## Live Links
+
+- Live Website: https://frontend-two-blue-24.vercel.app
+- GitHub Repository: https://github.com/ShreyaD28/Neural-trade-
+
+
+---
+
 ## Overview
 
 NeuralTrade is a full-stack AI-powered trading intelligence platform built for 
