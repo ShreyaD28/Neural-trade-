@@ -15,12 +15,22 @@ function signToken(userId) {
 }
 
 let googleClient = null;
-function getGoogleClient() {
-  if (!process.env.GOOGLE_CLIENT_ID) {
+function getGoogleAudiences() {
+  const raw =
+    process.env.GOOGLE_CLIENT_IDS || process.env.GOOGLE_CLIENT_ID || '';
+  const audiences = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!audiences.length) {
     throw new Error('GOOGLE_CLIENT_ID is not set');
   }
+  return audiences;
+}
+
+function getGoogleClient() {
   if (!googleClient) {
-    googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    googleClient = new OAuth2Client();
   }
   return googleClient;
 }
@@ -86,9 +96,10 @@ router.post('/google', async (req, res) => {
     }
 
     const client = getGoogleClient();
+    const audiences = getGoogleAudiences();
     const ticket = await client.verifyIdToken({
       idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: audiences.length === 1 ? audiences[0] : audiences,
     });
     const payload = ticket.getPayload();
     if (!payload?.email) {
