@@ -1,8 +1,6 @@
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
-}
-
-console.log("ENV TEST:", process.env.MONGODB_URI ? "LOADED" : "MISSING");
+// Always load the root .env regardless of cwd (backend/ vs project root)
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const express = require('express');
 const http = require('http');
@@ -65,8 +63,6 @@ const io = new Server(server, {
   cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
 });
 
-startMarketFeed(io);
-
 async function main() {
   if (!process.env.MONGODB_URI) {
     console.error('MONGODB_URI is required in .env');
@@ -78,6 +74,9 @@ async function main() {
   }
 
   await mongoose.connect(process.env.MONGODB_URI);
+
+  // Start market feed only after DB is ready so candle upserts succeed
+  startMarketFeed(io);
 
   server.listen(PORT, () => {
     console.log(`API listening on http://localhost:${PORT}`);

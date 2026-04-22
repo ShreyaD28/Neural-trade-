@@ -112,8 +112,10 @@ export default function MainDashboard() {
       try {
         const { data } = await api.get('/market/prices')
         if (!cancelled) {
-          setPrevPricesRemote((p) => Object.keys(data).length ? p : p)
-          setPricesRemote((prev) => { setPrevPricesRemote(prev); return data ?? {} })
+          setPricesRemote((prev) => {
+            setPrevPricesRemote(prev)
+            return data ?? {}
+          })
         }
       } catch { /* keep stale */ }
     }

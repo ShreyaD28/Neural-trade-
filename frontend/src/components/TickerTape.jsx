@@ -60,7 +60,7 @@ export default function TickerTape({ livePrices = {} }) {
     const p = staticPct[key] ?? 0
     const up = p >= 0
     const isCrypto = key.includes('-USD')
-    return { label: key === 'GC=F' ? 'GOLD' : label, price: fmt(v), pct: p.toFixed(2), up, isCrypto }
+    return { label, price: fmt(v), pct: p.toFixed(2), up, isCrypto }
   }).filter(Boolean)
 
   const doubled = [...row, ...row]

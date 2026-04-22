@@ -24,6 +24,9 @@ export default function Authentication() {
       }
       const { data } = await api.post('/auth/google', { credential })
       localStorage.setItem('token', data.token)
+      if (data.user) {
+        localStorage.setItem('neuraltrade_user', JSON.stringify(data.user))
+      }
       navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err.response?.data?.error ?? err.message ?? 'Google login failed')
@@ -41,6 +44,9 @@ export default function Authentication() {
       }
       const { data } = await api.post('/auth/login', { email, password })
       localStorage.setItem('token', data.token)
+      if (data.user) {
+        localStorage.setItem('neuraltrade_user', JSON.stringify(data.user))
+      }
       navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(

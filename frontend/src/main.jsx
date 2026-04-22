@@ -1,4 +1,3 @@
-console.log("CLIENT ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'

@@ -57,11 +57,19 @@ export function useSocket(symbol, options = {}) {
   useEffect(() => {
     const s = socketRef.current
     if (!s || !symbol) return
-    s.emit('subscribe', symbol)
+
+    // Subscribe immediately and re-subscribe after reconnects
+    const doSubscribe = () => s.emit('subscribe', symbol)
+    doSubscribe()
+    s.on('connect', doSubscribe)
+
     return () => {
-      s.emit('unsubscribe', symbol)
+      s.off('connect', doSubscribe)
+      if (s.connected) {
+        s.emit('unsubscribe', symbol)
+      }
     }
-  }, [symbol, connected])
+  }, [symbol])
 
   return { prices, latency, connected }
 }

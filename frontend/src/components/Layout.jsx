@@ -22,6 +22,16 @@ export default function Layout() {
   const [cashLoading, setCashLoading] = useState(true)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+
+  // Read user from localStorage (written by Authentication on login/google)
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('neuraltrade_user')
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
   const [notifications, setNotifications] = useState([
     { icon: '📈', title: 'AAPL Signal', body: 'BUY signal detected — RSI 32.4', time: '2 min ago', unread: true },
     { icon: '✅', title: 'Trade Executed', body: 'Bought 5 AAPL @ $260.48', time: '14 min ago', unread: true },
@@ -58,7 +68,20 @@ export default function Layout() {
         if (mounted) setCashLoading(false)
       }
     }
+
+    // If user info not yet in localStorage, fetch from /auth/me
+    async function loadUser() {
+      if (user) return
+      try {
+        const { data } = await api.get('/auth/me')
+        if (!mounted || !data.user) return
+        setUser(data.user)
+        localStorage.setItem('neuraltrade_user', JSON.stringify(data.user))
+      } catch { /* keep anonymous */ }
+    }
+
     loadCash()
+    loadUser()
     const id = setInterval(loadCash, 30_000)
     return () => {
       mounted = false
@@ -91,6 +114,7 @@ export default function Layout() {
   function logout() {
     localStorage.removeItem('token')
     localStorage.removeItem('neuraltrade_cash')
+    localStorage.removeItem('neuraltrade_user')
     navigate('/', { replace: true })
   }
 
@@ -157,11 +181,11 @@ export default function Layout() {
           </button>
           <div className="flex items-center gap-3 rounded-[var(--radius-obs-lg)] bg-obs-surface/60 p-2 backdrop-blur-md">
             <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-obs)] bg-obs-container-high font-manrope text-xs font-bold text-obs-primary">
-              AC
+              {user?.name ? user.name.slice(0, 2).toUpperCase() : user?.email ? user.email.slice(0, 2).toUpperCase() : '?'}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-manrope text-sm font-semibold text-obs-text">
-                Alex Chen
+                {user?.name || user?.email || 'Trader'}
               </p>
               <p className="text-[10px] font-medium uppercase tracking-wide text-obs-green">
                 Pro Tier
@@ -331,14 +355,14 @@ export default function Layout() {
             <div className="ml-1 hidden items-center gap-2 border-l border-[rgba(70,69,84,0.15)] pl-3 sm:flex">
               <div className="text-right">
                 <p className="font-manrope text-xs font-semibold text-obs-text">
-                  Alex Chen
+                  {user?.name || user?.email || 'Trader'}
                 </p>
                 <span className="inline-block rounded-[var(--radius-obs)] bg-obs-container-high px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-obs-primary">
                   Pro
                 </span>
               </div>
               <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-obs)] bg-obs-container-high font-manrope text-xs font-bold text-obs-primary">
-                AC
+                {user?.name ? user.name.slice(0, 2).toUpperCase() : user?.email ? user.email.slice(0, 2).toUpperCase() : '?'}
               </div>
             </div>
           </div>

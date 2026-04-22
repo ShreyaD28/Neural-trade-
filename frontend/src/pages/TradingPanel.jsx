@@ -140,17 +140,24 @@ export default function TradingPanel() {
       return
     }
 
+    // Resolve cash before locking the button so early-return doesn't leave it stuck
+    let availableCash
+    try {
+      availableCash = await resolveCashBalance()
+    } catch {
+      availableCash = cash
+    }
+
+    const tradeTotal = q * px
+    const requiredCash = tradeTotal + 1.5
+
+    if (side === 'buy' && requiredCash > availableCash) {
+      setToast({ open: true, type: 'error', message: 'Insufficient funds' })
+      return
+    }
+
     setBusy(true)
     try {
-      const availableCash = await resolveCashBalance()
-      const tradeTotal = q * px
-      const requiredCash = tradeTotal + 1.5
-
-      if (side === 'buy' && requiredCash > availableCash) {
-        setToast({ open: true, type: 'error', message: 'Insufficient funds' })
-        return
-      }
-
       const { data } = await api.post('/portfolio/trades', {
         symbol: asset,
         side,

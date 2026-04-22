@@ -25,9 +25,12 @@ export default function PortfolioOverview() {
 
   const load = useCallback(async () => {
     try {
-      const [{ data: summary }, { data: priceMap }] = await Promise.all([
+      // Fetch portfolio summary and prices in parallel; fall back to backend prices if ML is down
+      const [{ data: summary }, priceMap] = await Promise.all([
         api.get('/portfolio/summary'),
-        mlApi.get('/prices'),
+        mlApi.get('/prices').then((r) => r.data).catch(() =>
+          api.get('/market/prices').then((r) => r.data).catch(() => ({}))
+        ),
       ])
       setCashBalance(Number(summary?.cashBalance ?? 0))
       const mapped = (summary?.positions ?? []).map((p) => {

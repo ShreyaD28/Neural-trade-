@@ -9,11 +9,15 @@ const POLL_MS = 60_000;
 let ioRef = null;
 let pollTimer = null;
 
-/** Broadcast a candle to all clients and the symbol-specific room */
+/**
+ * Broadcast a candle globally to all connected clients.
+ * Clients subscribed to a symbol room also receive a targeted emit,
+ * so we only do the global emit here to avoid duplicates.
+ */
 function broadcastCandle(candle) {
   if (!ioRef || !candle) return;
+  // Global broadcast so all clients (ticker tape, dashboard) see every candle
   ioRef.emit('candle', candle);
-  ioRef.to(`symbol:${candle.symbol}`).emit('candle', candle);
 }
 
 async function upsertAndBroadcast(symbol, rawCandle) {
