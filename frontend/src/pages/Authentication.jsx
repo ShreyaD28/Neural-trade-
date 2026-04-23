@@ -213,7 +213,7 @@ export default function Authentication() {
                   onError={() => setError('Google login failed')}
                   shape="pill"
                   size="large"
-                  text="continue_with"
+                  text={tab === 'signup' ? 'signup_with' : 'signin_with'}
                   theme="outline"
                 />
               </div>

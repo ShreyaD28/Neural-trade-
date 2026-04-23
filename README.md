@@ -32,6 +32,13 @@ real-time systems, and AI integration.
 
 ---
 
+## Live Links
+
+- Live Website: [https://frontend-two-blue-24.vercel.app](https://frontend-two-blue-24.vercel.app)
+- GitHub Repository: [https://github.com/ShreyaD28/Neural-trade-](https://github.com/ShreyaD28/Neural-trade-)
+
+---
+
 ## Live Features
 
 - Real-time candlestick charts with WebSocket price feeds (<300ms latency)
