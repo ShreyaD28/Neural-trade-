@@ -39,10 +39,24 @@ export default function Authentication() {
     setError('')
     setLoading(true)
     try {
+      const normalizedEmail = email.trim().toLowerCase()
       if (tab === 'signup') {
-        await api.post('/auth/register', { email, password, name: '' })
+        const { data } = await api.post('/auth/register', {
+          email: normalizedEmail,
+          password,
+          name: '',
+        })
+        localStorage.setItem('token', data.token)
+        if (data.user) {
+          localStorage.setItem('neuraltrade_user', JSON.stringify(data.user))
+        }
+        navigate('/dashboard', { replace: true })
+        return
       }
-      const { data } = await api.post('/auth/login', { email, password })
+      const { data } = await api.post('/auth/login', {
+        email: normalizedEmail,
+        password,
+      })
       localStorage.setItem('token', data.token)
       if (data.user) {
         localStorage.setItem('neuraltrade_user', JSON.stringify(data.user))

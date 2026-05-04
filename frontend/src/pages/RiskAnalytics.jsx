@@ -10,7 +10,6 @@ import {
   YAxis,
 } from 'recharts'
 import api from '../api/client'
-import { mlApi } from '../api/client'
 
 const outline = 'border-[rgba(70,69,84,0.15)]'
 
@@ -21,24 +20,6 @@ const SECTOR_BLOCKS = [
   { name: 'Finance', pct: 10.2, color: '#ffb3ac' },
   { name: 'Other', pct: 19.5, color: '#323538' },
 ]
-
-function dailyClosesToReturns(candles) {
-  const byDay = new Map()
-  for (const c of candles ?? []) {
-    const day = new Date(c.timestamp).toISOString().slice(0, 10)
-    byDay.set(day, Number(c.close))
-  }
-  const closes = [...byDay.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, v]) => v)
-  const r = []
-  for (let i = 1; i < closes.length; i++) {
-    const a = closes[i - 1]
-    const b = closes[i]
-    if (a) r.push((b - a) / a)
-  }
-  return r
-}
 
 export default function RiskAnalytics() {
   const [sharpeData, setSharpeData] = useState([
@@ -65,7 +46,7 @@ export default function RiskAnalytics() {
         const cur = Number(trades[i]?.price ?? 0)
         if (prev > 0 && Number.isFinite(cur)) returns.push((cur - prev) / prev)
       }
-      const { data } = await mlApi.post('/risk', { returns })
+      const { data } = await api.post('/signals/risk', { returns })
       const s = Number(data.sharpe)
       if (Number.isFinite(s)) {
         setSharpeVal(s)
@@ -85,7 +66,7 @@ export default function RiskAnalytics() {
   }, [])
 
   useEffect(() => {
-    loadRisk()
+    queueMicrotask(loadRisk)
     const id = setInterval(loadRisk, 60_000)
     return () => clearInterval(id)
   }, [loadRisk])

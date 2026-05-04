@@ -6,16 +6,31 @@ function getMlBaseUrl() {
   return url.replace(/\/$/, '');
 }
 
+async function getMl(path, config = {}) {
+  const base = getMlBaseUrl();
+  const { data } = await axios.get(`${base}${path}`, {
+    timeout: 20_000,
+    ...config,
+  });
+  return data;
+}
+
+async function postMl(path, body = {}, config = {}) {
+  const base = getMlBaseUrl();
+  const { data } = await axios.post(`${base}${path}`, body, {
+    timeout: 20_000,
+    ...config,
+  });
+  return data;
+}
+
 /**
  * Proxy a lightweight signal request to the optional ML HTTP service.
  */
 async function quickSignalFromMlService(symbol, features) {
-  const base = getMlBaseUrl();
-  const { data } = await axios.post(
-    `${base}/signal`,
-    { symbol, features: features ?? {} },
-    { timeout: 10_000 }
-  );
+  const data = await postMl('/signal', { symbol, features: features ?? {} }, {
+    timeout: 10_000,
+  });
   return { source: 'ml-service', symbol, data };
 }
 
@@ -62,6 +77,8 @@ async function narrativeSignalWithOpenAI({
 }
 
 module.exports = {
+  getMl,
+  postMl,
   quickSignalFromMlService,
   narrativeSignalWithOpenAI,
 };

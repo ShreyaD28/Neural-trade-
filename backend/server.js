@@ -15,14 +15,31 @@ const signalsRoutes = require('./routes/signals');
 const { startMarketFeed } = require('./services/marketFeed');
 
 const PORT = process.env.PORT || 5050;
+mongoose.set('bufferCommands', false);
+
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'https://frontend-two-blue-24.vercel.app',
+];
+
 const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',')
-  : ['http://localhost:5173'];
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
+  : DEFAULT_ALLOWED_ORIGINS;
+
+function isOriginAllowed(origin) {
+  return !origin || allowedOrigins.includes(origin);
+}
+
 const app = express();
 
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      if (isOriginAllowed(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Origin not allowed by CORS'));
+    },
     credentials: true,
   })
 );
@@ -60,7 +77,15 @@ server.once('error', (err) => {
 });
 
 const io = new Server(server, {
-  cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
+  cors: {
+    origin(origin, callback) {
+      if (isOriginAllowed(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Origin not allowed by CORS'));
+    },
+    methods: ['GET', 'POST'],
+  },
 });
 
 async function main() {
@@ -73,7 +98,10 @@ async function main() {
     process.exit(1);
   }
 
-  await mongoose.connect(process.env.MONGODB_URI);
+  await mongoose.connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 10_000,
+    socketTimeoutMS: 15_000,
+  });
 
   // Start market feed only after DB is ready so candle upserts succeed
   startMarketFeed(io);

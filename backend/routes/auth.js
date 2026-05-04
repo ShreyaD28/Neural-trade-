@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
+const { ensureMongoReady } = require('../utils/dbState');
 
 const router = express.Router();
 
@@ -37,6 +38,7 @@ function getGoogleClient() {
 
 router.post('/register', async (req, res) => {
   try {
+    if (!ensureMongoReady(res)) return;
     const { email, password, name } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -63,6 +65,7 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
+    if (!ensureMongoReady(res)) return;
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -90,6 +93,7 @@ router.post('/login', async (req, res) => {
 
 router.post('/google', async (req, res) => {
   try {
+    if (!ensureMongoReady(res)) return;
     const credential = String(req.body?.credential || '').trim();
     if (!credential) {
       return res.status(400).json({ error: 'Google credential is required' });

@@ -56,7 +56,7 @@ export default function TradeHistory() {
   }, [])
 
   useEffect(() => {
-    load()
+    queueMicrotask(load)
   }, [load])
 
   const pagedRows = useMemo(() => {

@@ -1,10 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 
+const PROD_BACKEND_ORIGIN = 'https://neural-trade-39s2.onrender.com'
+
+function getDefaultSocketUrl() {
+  if (typeof window === 'undefined') {
+    return 'http://localhost:5050'
+  }
+
+  const { hostname } = window.location
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:5050'
+  }
+
+  return PROD_BACKEND_ORIGIN
+}
+
 const rawSocketUrl =
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:5050'
+  getDefaultSocketUrl()
 
 const SOCKET_URL = rawSocketUrl.replace(/\/api\/?$/, '')
 

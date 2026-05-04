@@ -6,7 +6,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts'
-import api, { mlApi } from '../api/client'
+import api from '../api/client'
 
 const outline = 'border-[rgba(70,69,84,0.15)]'
 
@@ -28,9 +28,7 @@ export default function PortfolioOverview() {
       // Fetch portfolio summary and prices in parallel; fall back to backend prices if ML is down
       const [{ data: summary }, priceMap] = await Promise.all([
         api.get('/portfolio/summary'),
-        mlApi.get('/prices').then((r) => r.data).catch(() =>
-          api.get('/market/prices').then((r) => r.data).catch(() => ({}))
-        ),
+        api.get('/market/prices').then((r) => r.data).catch(() => ({})),
       ])
       setCashBalance(Number(summary?.cashBalance ?? 0))
       const mapped = (summary?.positions ?? []).map((p) => {
@@ -57,7 +55,7 @@ export default function PortfolioOverview() {
   }, [])
 
   useEffect(() => {
-    load()
+    queueMicrotask(load)
     const id = setInterval(load, 30_000)
     return () => clearInterval(id)
   }, [load])

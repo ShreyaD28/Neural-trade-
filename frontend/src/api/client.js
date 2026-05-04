@@ -1,15 +1,28 @@
 import axios from 'axios'
 
+const PROD_BACKEND_ORIGIN = 'https://neural-trade-39s2.onrender.com'
+
+function getDefaultApiOrigin() {
+  if (typeof window === 'undefined') {
+    return 'http://localhost:5050'
+  }
+
+  const { hostname } = window.location
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:5050'
+  }
+
+  return PROD_BACKEND_ORIGIN
+}
+
 const apiOrigin = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL
-const mlOrigin = import.meta.env.VITE_ML_URL || import.meta.env.VITE_ML_API_URL
+const fallbackApiOrigin = getDefaultApiOrigin()
 
 const normalizedApiOrigin = apiOrigin
   ? apiOrigin.replace(/\/api\/?$/, '')
-  : null
+  : fallbackApiOrigin.replace(/\/api\/?$/, '')
 
-const baseURL = normalizedApiOrigin
-  ? normalizedApiOrigin + '/api'
-  : 'http://localhost:5050/api'
+const baseURL = normalizedApiOrigin + '/api'
 
 const api = axios.create({
   baseURL,
@@ -24,8 +37,3 @@ api.interceptors.request.use((config) => {
 })
 
 export default api
-
-export const mlApi = axios.create({
-  baseURL: mlOrigin || 'http://localhost:8000',
-  timeout: 120_000,
-})

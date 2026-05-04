@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { isMongoReady } = require('../utils/dbState');
 
 function auth(required = true) {
   return async (req, res, next) => {
@@ -18,6 +19,12 @@ function auth(required = true) {
     }
 
     try {
+      if (!isMongoReady()) {
+        return res.status(503).json({
+          error: 'Authentication service is temporarily unavailable. Please try again shortly.',
+        });
+      }
+
       const payload = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(payload.userId).select('-password');
       if (!user) {

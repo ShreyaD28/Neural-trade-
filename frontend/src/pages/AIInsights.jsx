@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
 import api from '../api/client'
-import { mlApi } from '../api/client'
 
 const outline = 'border-[rgba(70,69,84,0.15)]'
+const SYMBOLS = ['AAPL', 'TSLA', 'MSFT', 'GOOGL', 'BTC-USD']
 
 export default function AIInsights() {
   const [llmText, setLlmText] = useState('')
   const [signals, setSignals] = useState({})
   const [loading, setLoading] = useState(true)
-
-  const SYMBOLS = ['AAPL', 'TSLA', 'MSFT', 'GOOGL', 'BTC-USD']
 
   useEffect(() => {
     let cancelled = false
@@ -18,7 +16,7 @@ export default function AIInsights() {
       try {
         const results = await Promise.all(
           SYMBOLS.map((s) =>
-            mlApi.get(`/signals/${s}`).then((r) => [s, r.data]).catch(() => [s, null])
+            api.get(`/signals/ml/${s}`).then((r) => [s, r.data]).catch(() => [s, null])
           )
         )
         if (!cancelled) setSignals(Object.fromEntries(results))

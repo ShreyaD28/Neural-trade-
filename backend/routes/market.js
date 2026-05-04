@@ -1,6 +1,7 @@
 const express = require('express');
 const Candle = require('../models/Candle');
 const { getTrackedSymbols } = require('../services/marketFeed');
+const { getMl } = require('../services/mlClient');
 
 const router = express.Router();
 
@@ -64,6 +65,29 @@ router.get('/candles/:symbol', async (req, res) => {
     res.json({ symbol, interval, candles });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Failed to load candles' });
+  }
+});
+
+// ─── Live external candles proxied through the backend ───────────────────────
+router.get('/live-candles/:symbol', async (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').toUpperCase();
+    if (!symbol) {
+      return res.status(400).json({ error: 'symbol is required' });
+    }
+
+    const interval = String(req.query.interval || '1h');
+    const period = String(req.query.period || '1mo');
+    const data = await getMl(`/candles/${encodeURIComponent(symbol)}`, {
+      params: { interval, period },
+    });
+    res.json(Array.isArray(data) ? data : []);
+  } catch (err) {
+    const status = err.response?.status || 502;
+    res.status(status >= 400 && status < 600 ? status : 502).json({
+      error: err.message || 'Failed to load live candles',
+      detail: err.response?.data,
+    });
   }
 });
 

@@ -173,29 +173,6 @@ export default function MainDashboard() {
   )
   const totalEquity = cash + positionsValue
 
-  async function submitWalletTransaction(mode, amount) {
-    const contractAddress = import.meta.env.VITE_TREASURY_CONTRACT_ADDRESS || '0xYourTreasuryContract'
-    const contractAbi = [
-      // Minimal placeholder ABI. Replace with your actual ABI.
-      'function deposit() payable',
-      'function withdraw(uint256 amountWei)',
-    ]
-    if (!window.ethereum) {
-      throw new Error('No wallet detected')
-    }
-    const { ethers } = await import('ethers')
-    const provider = new ethers.BrowserProvider(window.ethereum)
-    const signer = await provider.getSigner()
-    const contract = new ethers.Contract(contractAddress, contractAbi, signer)
-    if (mode === 'deposit') {
-      const tx = await contract.deposit({ value: ethers.parseEther(String(amount)) })
-      await tx.wait()
-      return
-    }
-    const tx = await contract.withdraw(ethers.parseEther(String(amount)))
-    await tx.wait()
-  }
-
   async function handleWalletSubmit(e) {
     e.preventDefault()
     const amount = Number(walletAmount)

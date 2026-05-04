@@ -4,7 +4,7 @@ import {
   createChart,
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
-import api, { mlApi } from '../api/client'
+import api from '../api/client'
 
 const DEFAULT_HEIGHT = 400
 
@@ -114,7 +114,7 @@ export default function CandlestickChart({
     ;(async () => {
       try {
         const { data } = source === 'ml'
-          ? await mlApi.get(`/candles/${encodeURIComponent(symbol)}`, {
+          ? await api.get(`/market/live-candles/${encodeURIComponent(symbol)}`, {
               params: { interval, period },
             })
           : await api.get(`/market/candles/${encodeURIComponent(symbol)}`, {

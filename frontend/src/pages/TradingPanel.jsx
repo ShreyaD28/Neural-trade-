@@ -62,6 +62,7 @@ export default function TradingPanel() {
   const totalEst = estCost != null ? estCost + commission : null
   const canBuy = validQ && totalEst != null && totalEst <= cash
   const canSell = validQ && q <= ownedQty
+  const canExecuteTrade = side === 'buy' ? canBuy : canSell
   const timeframeConfig = TIMEFRAME_MAP[timeframe] ?? TIMEFRAME_MAP['1D']
 
   const loadRecent = useCallback(async () => {
@@ -455,7 +456,7 @@ export default function TradingPanel() {
 
             <button
               type="button"
-              disabled={busy || (side === 'buy' && !canBuy)}
+              disabled={busy || !canExecuteTrade}
               onClick={handleTrade}
               className="mb-4 w-full rounded-[var(--radius-obs-lg)] bg-gradient-to-r from-[#8b8fd1] to-obs-primary py-3.5 font-manrope text-sm font-bold text-[#111417] shadow-lg shadow-obs-primary/20 disabled:opacity-40"
             >

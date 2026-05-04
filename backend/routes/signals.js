@@ -1,6 +1,8 @@
 const express = require('express');
 const { auth } = require('../middleware/auth');
 const {
+  getMl,
+  postMl,
   quickSignalFromMlService,
   narrativeSignalWithOpenAI,
 } = require('../services/mlClient');
@@ -26,6 +28,37 @@ router.post('/ml', async (req, res) => {
     const status = err.response?.status || 502;
     res.status(status >= 400 && status < 600 ? status : 502).json({
       error: err.message || 'ML service error',
+      detail: err.response?.data,
+    });
+  }
+});
+
+router.get('/ml/:symbol', async (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').toUpperCase();
+    if (!symbol) {
+      return res.status(400).json({ error: 'symbol is required' });
+    }
+    const data = await getMl(`/signals/${encodeURIComponent(symbol)}`);
+    res.json(data);
+  } catch (err) {
+    const status = err.response?.status || 502;
+    res.status(status >= 400 && status < 600 ? status : 502).json({
+      error: err.message || 'ML service error',
+      detail: err.response?.data,
+    });
+  }
+});
+
+router.post('/risk', async (req, res) => {
+  try {
+    const returns = Array.isArray(req.body?.returns) ? req.body.returns : [];
+    const data = await postMl('/risk', { returns });
+    res.json(data);
+  } catch (err) {
+    const status = err.response?.status || 502;
+    res.status(status >= 400 && status < 600 ? status : 502).json({
+      error: err.message || 'Risk service error',
       detail: err.response?.data,
     });
   }

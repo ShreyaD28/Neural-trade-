@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { mlApi } from '../api/client'
+import api from '../api/client'
 
 const DEFAULT_ITEMS = [
   { label: 'BTC/USD', key: 'BTC-USD' },
@@ -27,7 +27,7 @@ export default function TickerTape({ livePrices = {} }) {
     let cancelled = false
     const load = async () => {
       try {
-        const { data } = await mlApi.get('/prices')
+        const { data } = await api.get('/market/prices')
         if (!cancelled) setRemote(data ?? {})
       } catch {
         if (!cancelled) setRemote({})

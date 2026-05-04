@@ -69,25 +69,34 @@ export default function Layout() {
       }
     }
 
-    // If user info not yet in localStorage, fetch from /auth/me
-    async function loadUser() {
-      if (user) return
-      try {
-        const { data } = await api.get('/auth/me')
-        if (!mounted || !data.user) return
-        setUser(data.user)
-        localStorage.setItem('neuraltrade_user', JSON.stringify(data.user))
-      } catch { /* keep anonymous */ }
-    }
-
     loadCash()
-    loadUser()
     const id = setInterval(loadCash, 30_000)
     return () => {
       mounted = false
       clearInterval(id)
     }
   }, [])
+
+  useEffect(() => {
+    if (user) return undefined
+
+    let mounted = true
+    async function loadUser() {
+      try {
+        const { data } = await api.get('/auth/me')
+        if (!mounted || !data.user) return
+        setUser(data.user)
+        localStorage.setItem('neuraltrade_user', JSON.stringify(data.user))
+      } catch {
+        /* keep anonymous */
+      }
+    }
+
+    loadUser()
+    return () => {
+      mounted = false
+    }
+  }, [user])
 
   useEffect(() => {
     function handleOutsideClick(e) {
