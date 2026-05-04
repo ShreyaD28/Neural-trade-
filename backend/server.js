@@ -20,6 +20,7 @@ mongoose.set('bufferCommands', false);
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'https://frontend-two-blue-24.vercel.app',
+  'https://neural-trade-mu.vercel.app',
 ];
 
 const allowedOrigins = process.env.CORS_ORIGIN
@@ -27,7 +28,16 @@ const allowedOrigins = process.env.CORS_ORIGIN
   : DEFAULT_ALLOWED_ORIGINS;
 
 function isOriginAllowed(origin) {
-  return !origin || allowedOrigins.includes(origin);
+  if (!origin || allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === 'https:' && parsed.hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
 }
 
 const app = express();

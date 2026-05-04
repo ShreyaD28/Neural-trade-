@@ -7,6 +7,17 @@ const router = express.Router();
 
 const USE_SIMULATOR = process.env.USE_SIMULATOR === 'true';
 
+function fallbackLimitForRange(interval, period) {
+  const key = `${interval}:${period}`;
+  const map = {
+    '5m:1d': 288,
+    '15m:5d': 480,
+    '1h:1mo': 720,
+    '1d:6mo': 540,
+  };
+  return map[key] ?? 500;
+}
+
 // ─── Symbols list ─────────────────────────────────────────────────────────────
 router.get('/symbols', (req, res) => {
   res.json({ symbols: getTrackedSymbols() });
@@ -70,24 +81,44 @@ router.get('/candles/:symbol', async (req, res) => {
 
 // ─── Live external candles proxied through the backend ───────────────────────
 router.get('/live-candles/:symbol', async (req, res) => {
-  try {
-    const symbol = String(req.params.symbol || '').toUpperCase();
-    if (!symbol) {
-      return res.status(400).json({ error: 'symbol is required' });
-    }
+  const symbol = String(req.params.symbol || '').toUpperCase();
+  if (!symbol) {
+    return res.status(400).json({ error: 'symbol is required' });
+  }
 
-    const interval = String(req.query.interval || '1h');
-    const period = String(req.query.period || '1mo');
+  const interval = String(req.query.interval || '1h');
+  const period = String(req.query.period || '1mo');
+
+  try {
     const data = await getMl(`/candles/${encodeURIComponent(symbol)}`, {
       params: { interval, period },
     });
     res.json(Array.isArray(data) ? data : []);
   } catch (err) {
-    const status = err.response?.status || 502;
-    res.status(status >= 400 && status < 600 ? status : 502).json({
-      error: err.message || 'Failed to load live candles',
-      detail: err.response?.data,
-    });
+    try {
+      const limit = fallbackLimitForRange(interval, period);
+      const candles = await Candle.find({ symbol, interval: '1m' })
+        .sort({ timestamp: -1 })
+        .limit(limit)
+        .lean();
+
+      candles.reverse();
+      const normalized = candles.map((c) => ({
+        time: Math.floor(new Date(c.timestamp).getTime() / 1000),
+        open: Number(c.open),
+        high: Number(c.high),
+        low: Number(c.low),
+        close: Number(c.close),
+        volume: Number(c.volume ?? 0),
+      }));
+      res.json(normalized);
+    } catch (fallbackErr) {
+      const status = err.response?.status || 502;
+      res.status(status >= 400 && status < 600 ? status : 502).json({
+        error: err.message || 'Failed to load live candles',
+        detail: err.response?.data ?? fallbackErr.message,
+      });
+    }
   }
 });
 
